@@ -15,10 +15,10 @@ import argparse
 
 def init_parser():
     parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
-    parser.add_argument('-mrvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the MRVM with the given parameters')
+    parser.add_argument('-mrvm', nargs=2, type=int,  metavar=('bidder_id', 'num_bids'), help='Generate a dataset for the MRVM with bidder_id and num_bids')
     parser.add_argument('-srvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the SRVM with the given parameters')
-    parser.add_argument('-save', nargs=1, metavar=('save'), help='Save the generated dataset')
-    parser.add_argument('-print', nargs=1, metavar=('print'), help='Print the generated dataset')
+    parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
+    parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
     return parser
 
 
@@ -27,16 +27,11 @@ def main():
     parser = init_parser()
     args = parser.parse_args()
     print(args)
-    print(len(args))
 
-    #parse args for keywords
-    if len(args) == 0:
-        print("No arguments passed. TODO \n ", "clean Documentation The following arguments are possible:\n", "-print enables printing\n","-save enables saving\n")
     print_all = args.print[0]
     save = args.save[0]
     print("Print all is set to "+ str(print_all))
     print("Save is set to "+ str(save))
-    print("Number of arguments passed: "+ str(len(args)))
     print("Arguments passed: "+ str(args))
     print("Arguments passed: "+ str(args.mrvm))
     if save:
@@ -48,12 +43,9 @@ def main():
         if save:
             if not os.path.exists("datasets/mrvm"):
                 os.makedirs("datasets/mrvm")
-        if args[id_arg+1].isdigit():
-            bidder_id = int(args[id_arg+1])
-        if args[id_arg+2].isdigit():
-            num_bids = int(args[id_arg+2])
-        if args[id_arg+3].isdigit():
-            seed = int(args[id_arg+3])
+        bidder_id = args.bidder_id
+        num_bids = args.num_bids
+        seed = args.seed
         print("Current mode : MRVN")
         # create an MRVM instance
         mrvm = PySats.getInstance().create_mrvm(seed=1)
