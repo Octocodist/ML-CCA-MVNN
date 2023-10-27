@@ -28,8 +28,8 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    print_all = args.print[0]
-    save = args.save[0]
+    print_all = args.print
+    save = args.save
     print("Print all is set to "+ str(print_all))
     print("Save is set to "+ str(save))
     print("Arguments passed: "+ str(args))
