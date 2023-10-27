@@ -35,7 +35,6 @@ def main():
     print("Print all is set to "+ str(print_all))
     print("Save is set to "+ str(save))
     print("Arguments passed: "+ str(args))
-    print("Arguments passed: "+ str(args.mrvm))
     if save:
         #check if folder exists and create it if not
         if not os.path.exists("datasets"):
@@ -45,8 +44,8 @@ def main():
         if save:
             if not os.path.exists("datasets/mrvm"):
                 os.makedirs("datasets/mrvm")
-        bidder_id = args.bidder_id
-        num_bids = args.num_bids
+        bidder_id = args.bidder_id[0]
+        num_bids = args.num_bids[0]
         seed = args.seed
         print("Current mode : MRVN")
         # create an MRVM instance
@@ -55,7 +54,7 @@ def main():
         # a bundle is not anymore a binary vector but a vector of integers
         mrvm_generic = GenericWrapper(mrvm)
 
-        bids = mrvm_generic.get_uniform_random_bids(bidder_id=1,num_bids=1)
+        bids = mrvm_generic.get_uniform_random_bids(bidder_id,num_bids)
 
         # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
         if save:
