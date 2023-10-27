@@ -11,42 +11,61 @@ PySats.getInstance()
 import numpy as np
 import pickle
 from pysats_ext import GenericWrapper
+import argparse
+
+def init_parser():
+    parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
+    parser.add_argument('-mrvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the MRVM with the given parameters')
+    parser.add_argument('-srvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the SRVM with the given parameters')
+    parser.add_argument('-save', nargs=1, metavar=('save'), help='Save the generated dataset')
+    parser.add_argument('-print', nargs=1, metavar=('print'), help='Print the generated dataset')
+    return parser
+
+
 
 def main():
-    args = sys.argv[1:]
+    parser = init_parser()
+    args = parser.parse_args()
+    print(args)
+    print(len(args))
+
     #parse args for keywords
     if len(args) == 0:
-        print("No arguments passed. The following arguments are possible:\n", "-print enables printing\n","-save enables saving\n")
-    for id_arg, arg in enumerate(args):
-        print_all = True if (arg == "-print" and args[id_arg+1] == "True" ) else False
-        save = True if (arg == "-save" and args[id_arg+1] == "True" ) else False
+        print("No arguments passed. TODO \n ", "clean Documentation The following arguments are possible:\n", "-print enables printing\n","-save enables saving\n")
+    print_all = args.print[0]
+    save = args.save[0]
+    print("Print all is set to "+ str(print_all))
+    print("Save is set to "+ str(save))
+    print("Number of arguments passed: "+ str(len(args)))
+    print("Arguments passed: "+ str(args))
+    print("Arguments passed: "+ str(args.mrvm))
+    if save:
+        #check if folder exists and create it if not
+        if not os.path.exists("datasets"):
+            os.makedirs("datasets")
+
+    if args.mrvm:
         if save:
-            #check if folder exists and create it if not
-            if not os.path.exists("datasets"):
-                os.makedirs("datasets")
+            if not os.path.exists("datasets/mrvm"):
+                os.makedirs("datasets/mrvm")
+        if args[id_arg+1].isdigit():
+            bidder_id = int(args[id_arg+1])
+        if args[id_arg+2].isdigit():
+            num_bids = int(args[id_arg+2])
+        if args[id_arg+3].isdigit():
+            seed = int(args[id_arg+3])
+        print("Current mode : MRVN")
+        # create an MRVM instance
+        mrvm = PySats.getInstance().create_mrvm(seed=1)
+        # use the GenericWrapper which uses goods with multiple items per good
+        # a bundle is not anymore a binary vector but a vector of integers
+        mrvm_generic = GenericWrapper(mrvm)
 
-        if arg == '-mrvm':
-            if save:
-                if not os.path.exists("datasets/mrvm"):
-                    os.makedirs("datasets/mrvm")
-            if args[id_arg+1].isdigit():
-                bidder_id = int(args[id_arg+1])
-            if args[id_arg+2].isdigit():
-                num_bids = int(args[id_arg+2])
-            if args[id_arg+3].isdigit():
-                seed = int(args[id_arg+3])
-            print("Current mode : MRVN")
-            # create an MRVM instance
-            mrvm = PySats.getInstance().create_mrvm(seed=1)
-            # use the GenericWrapper which uses goods with multiple items per good
-            # a bundle is not anymore a binary vector but a vector of integers
-            mrvm_generic = GenericWrapper(mrvm)
+        bids = mrvm_generic.get_uniform_random_bids(bidder_id=1,num_bids=1)
 
-            bids = mrvm_generic.get_uniform_random_bids(bidder_id=1,num_bids=1)
-
-            # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
-            if save:
-                pickle.dump(bids, open("datasets/mrvm/mrvm_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
+        # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
+        if save:
+            pickle.dump(bids, open("datasets/mrvm/mrvm_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
             '''
             if print_all:
                 # Number of goods in original pySats: 98
