@@ -18,7 +18,7 @@ def init_parser():
     parser.add_argument('-m','--mode',  type=str, help='Choose mode to sample from mrvm, srvm')
     parser.add_argument('-b','--bidder_id',nargs=1, type=int, help='Define bidder id')
     parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id')
-    parser.add_argument('-srvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the SRVM with the given parameters')
+    parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=1 )
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
     return parser
