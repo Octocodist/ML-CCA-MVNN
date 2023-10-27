@@ -41,7 +41,7 @@ def main():
         if not os.path.exists("datasets"):
             os.makedirs("datasets")
 
-    if args.mrvm:
+    if args.mode =='mrvm':
         if save:
             if not os.path.exists("datasets/mrvm"):
                 os.makedirs("datasets/mrvm")
