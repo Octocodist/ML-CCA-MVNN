@@ -15,10 +15,10 @@ import argparse
 
 def init_parser():
     parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
-    parser.add_argument('-mrvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the MRVM with the given parameters')
+    parser.add_argument('-mrvm', nargs=2+, type=int,  metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the MRVM with the given parameters')
     parser.add_argument('-srvm', nargs=3, metavar=('bidder_id', 'num_bids', 'seed'), help='Generate a dataset for the SRVM with the given parameters')
-    parser.add_argument('-save', nargs=1, metavar=('save'), help='Save the generated dataset')
-    parser.add_argument('-print', nargs=1, metavar=('print'), help='Print the generated dataset')
+    parser.add_argument('-s','--save', nargs=1, metavar=('save'), help='Save the generated dataset', default=False)
+    parser.add_argument('-p','--print', nargs=1, metavar=('print'), help='Print the generated dataset', default=False)
     return parser
 
 
