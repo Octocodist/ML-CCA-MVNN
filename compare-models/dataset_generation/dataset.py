@@ -59,6 +59,67 @@ def main():
         # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
         if save:
             pickle.dump(bids, open("datasets/mrvm/mrvm_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
+
+    if args.mode == 'srvm':
+        if save:
+            if not os.path.exists("datasets/srvm"):
+                os.makedirs("datasets/srvm")
+        bidder_id = args.bidder_id[0]
+        num_bids = args.num_bids[0]
+        seed = args.seed
+        print("Current mode : SRVN")
+        # create an MRVM instance
+        srvm = PySats.getInstance().create_srvm(seed=1)
+        # use the GenericWrapper which uses goods with multiple items per good
+        # a bundle is not anymore a binary vector but a vector of integers
+        srvm_generic = GenericWrapper(srvm)
+
+        bids = srvm_generic.get_uniform_random_bids(bidder_id, num_bids)
+
+        # pickle dump the bids to a file named by vrn and bidder_id and num_bids using pickle
+        if save:
+            pickle.dump(bids, open("datasets/srvm/srvm_" + str(bidder_id) + "_" + str(num_bids) + ".pkl", "wb"), -1)
+
+    if args.mode == 'gsvm':
+        if save:
+            if not os.path.exists("datasets/gsvm"):
+                os.makedirs("datasets/gsvm")
+        bidder_id = args.bidder_id[0]
+        num_bids = args.num_bids[0]
+        seed = args.seed
+        print("Current mode : GSVM")
+        # create an GSVM instance
+        gsvm = PySats.getInstance().create_gsvm(seed=1)
+        # use the GenericWrapper which uses goods with multiple items per good
+        # a bundle is not anymore a binary vector but a vector of integers
+        #gsvm_generic = GenericWrapper(gsvm)
+
+        bids = gsvm.get_uniform_random_bids(bidder_id, num_bids)
+
+        # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
+        if save:
+            pickle.dump(bids, open("datasets/gsvm/gsvm_" + str(bidder_id) + "_" + str(num_bids) + ".pkl", "wb"),
+                        -1)
+    if args.mode == 'lsvm':
+        if save:
+            if not os.path.exists("datasets/lsvm"):
+                os.makedirs("datasets/lsvm")
+        bidder_id = args.bidder_id[0]
+        num_bids = args.num_bids[0]
+        seed = args.seed
+        print("Current mode : LSVM")
+        # create an LSVM instance
+        lsvm = PySats.getInstance().create_lsvm(seed=1)
+        # use the GenericWrapper which uses goods with multiple items per good
+        # a bundle is not anymore a binary vector but a vector of integers
+        # lsvm_generic = GenericWrapper(lsvm)
+
+        bids = lsvm.get_uniform_random_bids(bidder_id, num_bids)
+
+        # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
+        if save:
+            pickle.dump(bids, open("datasets/lsvm/lsvm_" + str(bidder_id) + "_" + str(num_bids) + ".pkl", "wb"),
+                    -1)
             '''
             if print_all:
                 # Number of goods in original pySats: 98
