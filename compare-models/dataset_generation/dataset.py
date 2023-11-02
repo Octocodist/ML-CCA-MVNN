@@ -21,7 +21,8 @@ import numpy as np
 from tqdm import tqdm
 
 # order 0 if model_name not in ['SRVM', 'MRVM'] else 2)
-def generate_all_bundle_value_pairs(world, k=26144):
+def generate_all_bundle_value_pairs(world, k=4):
+    print("STARTED SAMPLING")
     N = world.get_bidder_ids()
     M = world.get_good_ids()
 
@@ -75,17 +76,17 @@ def main():
     seed = args.seed
     print("Current mode :"+ str(args.mode))
     # create an instance
-    domain = hasattr(PySats.getInstance(),"create_"+str(args.mode))(seed=1)
+    domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=1)
     print("FOUND DOMAIN")
     # use the GenericWrapper which uses goods with multiple items per good
     # a bundle is not anymore a binary vector but a vector of integers
-    if args.mode == "mrvm" or "srvm":
+    if args.mode == "mrvm" or args.mode == "srvm":
         domain = GenericWrapper(domain)
     bids = generate_all_bundle_value_pairs(domain, k=num_bids)
     #bids = domain.get_uniform_random_bids(bidder_id,num_bids)
     # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
     if args.save:
-        pickle.dump(bids, open("datasets/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
+        pickle.dump(bids, open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
         print("Saved")
         exit()
 
