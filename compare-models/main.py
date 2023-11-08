@@ -1,3 +1,5 @@
+import os
+
 import numpy
 import pickle
 
@@ -165,6 +167,7 @@ def main(args):
 
     ### load dataset ###
     train, val, test = load_dataset(args, train_percent=args.train_percent)
+    print("--- Loaded dataset successfully ---")
 
     ### define model ###
     model = get_mvnn(train[0][0].shape[0])
@@ -217,13 +220,16 @@ def main(args):
         wandb.log({"test_loss": loss.item()})
 
 
-
-
 if __name__ == "__main__":
     print("--Start Parsing Arguments--")
     parser = init_parser()
     args = parser.parse_args()
 
+    args.bidder_id = int(1)
+    args.dataset = "srvm"
+    args.nbids = int(25000)
+
+    os.environ['WANDB_SILENT'] = "true"
     wandb.init(project="mvnn")
     wandb.config.update(args)
 

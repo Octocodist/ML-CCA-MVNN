@@ -1,0 +1,107 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.13
+    cli_version: 0.15.12
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1699454502.584405
+    t:
+      1:
+      - 1
+      - 5
+      - 53
+      - 55
+      2:
+      - 1
+      - 5
+      - 53
+      - 55
+      3:
+      - 1
+      - 23
+      4: 3.10.13
+      5: 0.15.12
+      8:
+      - 5
+      13: linux-x86_64
+dataset:
+  desc: null
+  value: lsvm
+nbids:
+  desc: null
+  value: 25000
+bidder_id:
+  desc: null
+  value: 1
+model:
+  desc: null
+  value: mvnn
+train_percent:
+  desc: null
+  value: 0.1
+epochs:
+  desc: null
+  value: 100
+batch_size:
+  desc: null
+  value: 32
+lr:
+  desc: null
+  value: 0.001
+num_hidden_layers:
+  desc: null
+  value: 1
+num_hidden_units:
+  desc: null
+  value: 20
+layer_type:
+  desc: null
+  value: MVNNLayerReLUProjected
+target_max:
+  desc: null
+  value: 1
+lin_skip_connection:
+  desc: null
+  value: 1
+dropout_prob:
+  desc: null
+  value: 0
+init_method:
+  desc: null
+  value: custom
+random_ts:
+  desc: null
+  value:
+  - 0
+  - 1
+trainable_ts:
+  desc: null
+  value: true
+init_E:
+  desc: null
+  value: 1
+init_Var:
+  desc: null
+  value: 0.09
+init_b:
+  desc: null
+  value: 0.05
+init_bias:
+  desc: null
+  value: 0.05
+init_little_const:
+  desc: null
+  value: 0.1
+optimizer:
+  desc: null
+  value: "Adam (\nParameter Group 0\n    amsgrad: False\n    betas: (0.9, 0.999)\n\
+    \    capturable: False\n    differentiable: False\n    eps: 1e-08\n    foreach:\
+    \ None\n    fused: None\n    lr: 0.001\n    maximize: False\n    weight_decay:\
+    \ 0\n)"
+loss:
+  desc: null
+  value: MSELoss()
