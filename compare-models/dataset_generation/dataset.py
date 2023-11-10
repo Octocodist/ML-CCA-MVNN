@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 # order 0 if model_name not in ['SRVM', 'MRVM'] else 2)
 def generate_all_bundle_value_pairs(world, k, mode):
+def generate_all_bundle_value_pairs(world, k=4):
     print("STARTED SAMPLING")
     N = world.get_bidder_ids()
     M = world.get_good_ids()
