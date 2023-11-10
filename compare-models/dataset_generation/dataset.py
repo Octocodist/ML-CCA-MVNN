@@ -22,21 +22,25 @@ from tqdm import tqdm
 
 # order 0 if model_name not in ['SRVM', 'MRVM'] else 2)
 def generate_all_bundle_value_pairs(world, k, mode):
-def generate_all_bundle_value_pairs(world, k=4):
     print("STARTED SAMPLING")
     N = world.get_bidder_ids()
     M = world.get_good_ids()
     print(" M is: ", M, " N is: ", N, " for world : " )
 
-    capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
-    print("CAPACITIES are ", capacities)
-
     #this only samples 0 and 1 for each good
-    if world == 'srvm' or world == 'mrvm':
-        bundle_space = [np.random.choice([0, 1], len(M)) for _ in range(k)]
-        # Only use unique samples.
-        bundle_space = np.unique(np.array(bundle_space), axis=0)
-        print("Num Unique Samples: ", len(bundle_space))
+    if mode == 'srvm' or mode == 'mrvm':
+       capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
+       print("Capacities: ", capacities)
+       bundle_space = []
+       for _ in range(k):
+           bundle = ()
+           for i in range(len(M)):
+               bundle += (np.random.choice(capacities[i]),)
+           bundle_space.append(bundle)
+       print("Bundle Space is: ", bundle_space) 
+       # Only use unique samples.
+       bundle_space = np.unique(np.array(bundle_space), axis=0)
+       print("Num Unique Samples: ", len(bundle_space))
     else:
         #this creates a list of lists of length len(M) with all possible combinations of 0 and 1
         #this calculates the cartesian product of the list [0,1] with itself len(M) times
@@ -52,7 +56,7 @@ def init_parser():
     parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
     parser.add_argument('-m','--mode',  type=str, help='Choose mode to sample from mrvm, srvm', choices=['mrvm','srvm','gsvm','lsvm'], default='gsvm')
     parser.add_argument('-b','--bidder_id',nargs=1, type=int, help='Define bidder id', default=[1])
-    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[25000])
+    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[250])
     parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=1 )
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
