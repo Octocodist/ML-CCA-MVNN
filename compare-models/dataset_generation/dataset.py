@@ -20,12 +20,15 @@ import random
 import numpy as np
 from tqdm import tqdm
 
-# order 0 if model_name not in ['SRVM', 'MRVM'] else 2)
 def generate_all_bundle_value_pairs(world, k=4):
     print("STARTED SAMPLING")
     N = world.get_bidder_ids()
     M = world.get_good_ids()
 
+    capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
+    print("CAPACITIES are ", capacities)
+
+    #this only samples 0 and 1 for each good
     if world == 'srvm' or world == 'mrvm':
         bundle_space = [np.random.choice([0, 1], len(M)) for _ in range(k)]
         # Only use unique samples.
