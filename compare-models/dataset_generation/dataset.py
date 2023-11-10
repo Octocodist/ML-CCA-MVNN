@@ -25,11 +25,24 @@ def generate_all_bundle_value_pairs(world, k=4):
     N = world.get_bidder_ids()
     M = world.get_good_ids()
 
-    capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
-    print("CAPACITIES are ", capacities)
 
     #this only samples 0 and 1 for each good
     if world == 'srvm' or world == 'mrvm':
+        capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
+        bundle_space = []
+        for _ in range(k):
+            bundle = ()
+            for i in range(M):
+                bundle += (np.random.choice(capacities[i]))
+            bundle_space.append(bundle)
+
+        print(bundle_space)
+
+
+
+
+
+
         bundle_space = [np.random.choice([0, 1], len(M)) for _ in range(k)]
         # Only use unique samples.
         bundle_space = np.unique(np.array(bundle_space), axis=0)
