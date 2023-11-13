@@ -17,6 +17,8 @@ import wandb
 ### custom imports ###
 from mvnns.mvnn import MVNN
 from mvnns.mvnn_generic import MVNN_GENERIC
+from UMNN import UMNN
+
 
 
 def init_parser():
@@ -70,6 +72,7 @@ MVNN_parameters = {'num_hidden_layers': 1,
                     'init_bias': 0.05,
                     'init_little_const': 0.1
                         }
+UMNN_parameters = {'num_hidden_layers': 1,}
 
 def load_dataset(args, num_train_data=1000, train_percent=0):
     # load dataset using pickle
@@ -150,6 +153,11 @@ def get_mvnn(input_shape):
                     )
     return model
 
+def get_umnn(umnn_parameters):
+    model = UMNN(input_dim=args.nbids, output_dim=1, nb_steps=10, nb_units=[50, 50], shift_invariance=True)
+    return model
+
+
 
 # TODOS:
 # define nn parameters -> use default for now (see mvnn_generic.py)
@@ -170,7 +178,13 @@ def main(args):
     print("--- Loaded dataset successfully ---")
 
     ### define model ###
-    model = get_mvnn(train[0][0].shape[0])
+    if args.model == 'MVNN':
+        model = get_mvnn(train[0][0].shape[0])
+    elif args.model == 'UMNN':
+        model = get_umnn()
+    else:
+        print("Model not implemented yet")
+        exit(1234)
 
     ### define loss function ###
     loss_mse = torch.nn.MSELoss()
