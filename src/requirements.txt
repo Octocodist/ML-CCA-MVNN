@@ -1,5 +1,5 @@
 Cython
-pyjnius==1.3.0
+pyjnius
 matplotlib
 numpyencoder
 pandas

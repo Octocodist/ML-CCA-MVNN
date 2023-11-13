@@ -128,7 +128,7 @@ def get_mvnn(input_shape):
     init_b = MVNN_parameters['init_b']
     init_bias = MVNN_parameters['init_bias']
     init_little_const = MVNN_parameters['init_little_const']
-    #TODO: add capacity_generic_goods as parameter
+    #capacity_generic_goods = MVNN_parameters['capacity_generic_goods']
     #hard coded for gsvm
     capacity_generic_goods = np.array([1 for _ in range(18)])
     model = MVNN_GENERIC(input_dim=input_shape,
@@ -198,9 +198,10 @@ def main(args):
             predictions = model.forward(batch[0])
 
             loss = loss_mse(predictions,batch[1][:,1])
-            model.transform_weights()
+
             loss.backward()
             optimizer.step()
+            model.transform_weights()
 
             wandb.log({"loss": loss.item()})
 
@@ -226,10 +227,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.bidder_id = int(1)
-    args.dataset = "srvm"
+    args.dataset = "gsvm"
     args.nbids = int(25000)
 
-    os.environ['WANDB_SILENT'] = "true"
+    #os.environ['WANDB_SILENT'] = "true"
     wandb.init(project="mvnn")
     wandb.config.update(args)
 
