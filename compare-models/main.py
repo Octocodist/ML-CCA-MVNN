@@ -17,7 +17,11 @@ import wandb
 ### custom imports ###
 from mvnns.mvnn import MVNN
 from mvnns.mvnn_generic import MVNN_GENERIC
-from UMNN import UMNN
+import importlib
+umnn = importlib.import_module("generalized-UMNN")
+#umnn = __import__("generalized-UMNN")
+#globals().update(vars(umnn))
+slowumnn = importlib.import_module("generalized-UMNN/MultidimensionnalMonotonicNN")
 
 
 

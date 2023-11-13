@@ -1,3 +1,6 @@
 [submodule "compare-models/generalized-UMNN"]
 	path = compare-models/generalized-UMNN
 	url = git@github.com:Octocodist/generalized-UMNN.git
+[submodule "compare-models/generalized_UMNN"]
+	path = compare-models/generalized_UMNN
+	url = git@github.com:Octocodist/generalized_UMNN.git
