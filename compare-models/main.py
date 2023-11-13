@@ -2,6 +2,7 @@ import os
 
 import numpy
 import pickle
+import torch.nn as nn
 
 import argparse
 import numpy as np
@@ -17,11 +18,7 @@ import wandb
 ### custom imports ###
 from mvnns.mvnn import MVNN
 from mvnns.mvnn_generic import MVNN_GENERIC
-import importlib
-umnn = importlib.import_module("generalized-UMNN")
-#umnn = __import__("generalized-UMNN")
-#globals().update(vars(umnn))
-slowumnn = importlib.import_module("generalized-UMNN/MultidimensionnalMonotonicNN")
+from generalized_UMNN.models.MultidimensionnalMonotonicNN import SlowDMonotonicNN
 
 
 
@@ -32,7 +29,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm")
     parser.add_argument("--nbids", help="number of bids to use", default=20)
     parser.add_argument("--bidder_id", help="bidder id to use", default=3)
-    parser.add_argument("--model", help="model to use", default="mvnn")
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN'], default='UMNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
 
     ### training parameters ###
@@ -76,7 +73,9 @@ MVNN_parameters = {'num_hidden_layers': 1,
                     'init_bias': 0.05,
                     'init_little_const': 0.1
                         }
-UMNN_parameters = {'num_hidden_layers': 1,}
+umnn_parameters = {"mon_in": 10, "cond_in": 0, "hiddens": [10,10], "n_out": 1, "nb_steps": 50, "device": "cpu"}
+
+
 
 def load_dataset(args, num_train_data=1000, train_percent=0):
     # load dataset using pickle
@@ -157,8 +156,27 @@ def get_mvnn(input_shape):
                     )
     return model
 
-def get_umnn(umnn_parameters):
-    model = UMNN(input_dim=args.nbids, output_dim=1, nb_steps=10, nb_units=[50, 50], shift_invariance=True)
+#This network needs an embedding Network and a umnn network
+#TODO change this from hardcoded
+class EmbeddingNet(nn.Module):
+    def __init__(self, in_embedding, in_main, out_embedding, device):
+        super(EmbeddingNet, self).__init__()
+        self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
+                                           nn.Linear(200, 200), nn.ReLU(),
+                                           nn.Linear(200, out_embedding), nn.ReLU()).to(device)
+
+        self.umnn = SlowDMonotonicNN(in_main, out_embedding, [100, 100, 100], 1, 300, device)
+
+    def set_steps(self, nb_steps):
+        self.umnn.set_steps(nb_steps)
+
+    def forward(self, x):
+        h = self.embedding_net(x[:,:])
+        #h = self.embedding_net(x)
+        return torch.sigmoid(self.umnn(x, h))
+def get_umnn(umnn_parameters, input_shape):
+    model = EmbeddingNet(in_embedding =input_shape, in_main=input_shape, out_embedding=18, device="cpu")
+
     return model
 
 
@@ -179,13 +197,15 @@ def main(args):
 
     ### load dataset ###
     train, val, test = load_dataset(args, train_percent=args.train_percent)
+    train_shape = train[0][0].shape[0]
     print("--- Loaded dataset successfully ---")
 
     ### define model ###
     if args.model == 'MVNN':
-        model = get_mvnn(train[0][0].shape[0])
+        model = get_mvnn(train_shape)
     elif args.model == 'UMNN':
-        model = get_umnn()
+        model = get_umnn(umnn_parameters,train_shape)
+        print("UMNN loaded")
     else:
         print("Model not implemented yet")
         exit(1234)
@@ -219,7 +239,11 @@ def main(args):
 
             loss.backward()
             optimizer.step()
-            model.transform_weights()
+            if args.model == 'MVNN':
+                model.transform_weights()
+            elif args.model == 'UMNN':
+                model.set_steps(int(torch.randint(30,60, [1])))
+
 
             wandb.log({"loss": loss.item()})
 
