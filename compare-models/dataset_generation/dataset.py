@@ -95,7 +95,7 @@ def main():
     print("Current mode :"+ str(args.mode))
     # create an instance
     #domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=1)
-    domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=args.seed[0])
+    domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=args.seed)
     print("FOUND DOMAIN")
     # use the GenericWrapper which uses goods with multiple items per good
     # a bundle is not anymore a binary vector but a vector of integers
