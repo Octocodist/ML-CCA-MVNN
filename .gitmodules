@@ -4,3 +4,6 @@
 [submodule "compare-models/generalized_UMNN"]
 	path = compare-models/generalized_UMNN
 	url = git@github.com:Octocodist/generalized_UMNN.git
+[submodule "compare-models/CertifiedMonotonic/CertifiedMonotonicNetwork"]
+	path = compare-models/CertifiedMonotonic/CertifiedMonotonicNetwork
+	url = git@github.com:Octocodist/CertifiedMonotonicNetwork.git
