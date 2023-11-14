@@ -234,8 +234,10 @@ def main(args):
             optimizer.zero_grad()
 
             predictions = model.forward(batch[0])
-
-            loss = loss_mse(predictions,batch[1][:,1])
+            if args.model == "MVNN":
+                loss = loss_mse(predictions,batch[1][:,1])
+            elif args.model == "UMNN": 
+                loss = loss_mse(predictions,batch[1][:,1].squeeze())
 
             loss.backward()
             optimizer.step()
