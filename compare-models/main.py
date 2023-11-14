@@ -11,6 +11,7 @@ from torch.optim import Adam
 import torch
 from tqdm import tqdm
 from torch.utils.data import TensorDataset
+import torch.nn.functional as F
 
 
 import wandb
@@ -19,6 +20,8 @@ import wandb
 from mvnns.mvnn import MVNN
 from mvnns.mvnn_generic import MVNN_GENERIC
 from generalized_UMNN.models.MultidimensionnalMonotonicNN import SlowDMonotonicNN
+
+import  CertifiedMonotonicNetwork
 
 
 
@@ -29,7 +32,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm")
     parser.add_argument("--nbids", help="number of bids to use", default=20)
     parser.add_argument("--bidder_id", help="bidder id to use", default=3)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN'], default='UMNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
     parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
 
     ### training parameters ###
@@ -155,7 +158,7 @@ def get_mvnn(input_shape):
                     capacity_generic_goods=capacity_generic_goods
                     )
     return model
-
+### UMNN Section ###
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
 class EmbeddingNet(nn.Module):
@@ -178,6 +181,135 @@ def get_umnn(umnn_parameters, input_shape):
     model = EmbeddingNet(in_embedding =input_shape, in_main=input_shape, out_embedding=18, device="cpu")
 
     return model
+ ### CERT Section ###
+
+def generate_regularizer(in_list, out_list):
+    length = len(in_list)
+    reg_loss = 0.
+    min_derivative = 0.0
+    for i in range(length):
+        xx = in_list[i]
+        yy = out_list[i]
+        for j in range(yy.shape[1]):
+            grad_input = torch.autograd.grad(torch.sum(yy[:, j]), xx, create_graph=True, allow_unused=True)[0]
+            grad_input_neg = -grad_input
+            grad_input_neg += .2
+            grad_input_neg[grad_input_neg < 0.] = 0.
+            if min_derivative < torch.max(grad_input_neg ** 2):
+                min_derivative = torch.max(grad_input_neg ** 2)
+    reg_loss = min_derivative
+    return reg_loss
+
+
+class MLP_relu(nn.Module):
+    def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
+                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
+        super(MLP_relu, self).__init__()
+        self.normalize_regression = normalize_regression
+        self.compress_non_mono = compress_non_mono
+        if compress_non_mono:
+            self.non_mono_feature_extractor = nn.Linear(non_mono_feature, 10, bias=True)
+            self.mono_fc_in = nn.Linear(mono_feature + 10, mono_hidden_num, bias=True)
+        else:
+            self.mono_fc_in = nn.Linear(mono_feature + non_mono_feature, mono_hidden_num, bias=True)
+
+        bottleneck = 10
+        self.non_mono_fc_in = nn.Linear(non_mono_feature, non_mono_hidden_num, bias=True)
+        self.mono_submods_out = nn.ModuleList(
+            [nn.Linear(mono_hidden_num, bottleneck, bias=True) for i in range(mono_sub_num)])
+        self.mono_submods_in = nn.ModuleList(
+            [nn.Linear( bottleneck, mono_hidden_num, bias=True) for i in range(mono_sub_num)]) # changesd this to single bottleneck not double
+        self.non_mono_submods_out = nn.ModuleList(
+            [nn.Linear(non_mono_hidden_num, bottleneck, bias=True) for i in range(mono_sub_num)])
+        self.non_mono_submods_in = nn.ModuleList(
+            [nn.Linear(bottleneck, non_mono_hidden_num, bias=True) for i in range(mono_sub_num)])
+
+        self.mono_fc_last = nn.Linear(mono_hidden_num, 1, bias=True)
+        self.non_mono_fc_last = nn.Linear(non_mono_hidden_num, 1, bias=True)
+
+    def forward(self, mono_feature, non_mono_feature=None, only_mono=True):
+        if only_mono:
+            x = self.mono_fc_in(mono_feature)
+            x = F.relu(x)
+            for i in range(int(len(self.mono_submods_out))):
+                x = self.mono_submods_out[i](x)
+                x = F.hardtanh(x, min_val=0.0, max_val=1.0)
+
+                x = self.mono_submods_in[i](x)
+                x = F.relu(x)
+            x = self.mono_fc_last(x)
+            out = x
+            if self.normalize_regression:
+                out = F.sigmoid(out)
+        else :
+            y = self.non_mono_fc_in(non_mono_feature)
+            y = F.relu(y)
+
+            if self.compress_non_mono:
+                non_mono_feature = self.non_mono_feature_extractor(non_mono_feature)
+                non_mono_feature = F.hardtanh(non_mono_feature, min_val=0.0, max_val=1.0)
+
+            x = self.mono_fc_in(torch.cat([mono_feature, non_mono_feature], dim=1))
+            x = F.relu(x)
+            for i in range(int(len(self.mono_submods_out))):
+                x = self.mono_submods_out[i](x)
+                x = F.hardtanh(x, min_val=0.0, max_val=1.0)
+
+                y = self.non_mono_submods_out[i](y)
+                y = F.hardtanh(y, min_val=0.0, max_val=1.0)
+
+                x = self.mono_submods_in[i](torch.cat([x, y], dim=1))
+                x = F.relu(x)
+
+                y = self.non_mono_submods_in[i](y)
+                y = F.relu(y)
+
+            x = self.mono_fc_last(x)
+
+            y = self.non_mono_fc_last(y)
+
+            out = x + y
+            if self.normalize_regression:
+                out = F.sigmoid(out)
+        return out
+
+    def reg_forward(self, feature_num, mono_num, bottleneck=10, num=512):
+        in_list = []
+        out_list = []
+        if self.compress_non_mono:
+            input_feature = torch.rand(num, mono_num + 10).cuda()
+        else:
+            input_feature = torch.rand(num, feature_num)
+        input_mono = input_feature[:, :mono_num]
+        input_non_mono = input_feature[:, mono_num:]
+        input_mono.requires_grad = True
+
+        x = self.mono_fc_in(input_mono)
+        in_list.append(input_mono)
+
+        x = F.relu(x)
+        for i in range(int(len(self.mono_submods_out))):
+            x = self.mono_submods_out[i](x)
+            out_list.append(x)
+
+            input_feature = torch.rand(num, 2 * bottleneck)
+            input_mono = input_feature[:, :bottleneck]
+            input_non_mono = input_feature[:, bottleneck:]
+            in_list.append(input_mono)
+            in_list[-1].requires_grad = True
+
+            x = self.mono_submods_in[i](input_mono)
+            x = F.relu(x)
+
+        x = self.mono_fc_last(x)
+        out_list.append(x)
+
+        return in_list, out_list
+
+
+def get_cert(input_shape):
+    model = MLP_relu(mono_feature=input_shape, non_mono_feature=0, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=100, non_mono_hidden_num=100)
+    return model
 
 
 
@@ -198,6 +330,7 @@ def main(args):
     ### load dataset ###
     train, val, test = load_dataset(args, train_percent=args.train_percent)
     train_shape = train[0][0].shape[0]
+    print(train_shape, " is the train shape")
     print("--- Loaded dataset successfully ---")
 
     ### define model ###
@@ -206,12 +339,17 @@ def main(args):
     elif args.model == 'UMNN':
         model = get_umnn(umnn_parameters,train_shape)
         print("UMNN loaded")
+    elif args.model == 'CERT':
+        model = get_cert(train_shape)
+        print("CERT loaded")
+        loss_cert = nn.BCEWithLogitsLoss()
     else:
         print("Model not implemented yet")
         exit(1234)
 
     ### define loss function ###
     loss_mse = torch.nn.MSELoss()
+
 
     batch_size = 12
 
@@ -229,20 +367,28 @@ def main(args):
     wandb.config.update({'train_percent': args.train_percent})
 
     ### Training ###
-    for e in tqdm(range(epochs)):
-        for batch in train_loader:
+    for e in range(epochs):
+        for batch in tqdm(train_loader):
             optimizer.zero_grad()
+            if args.model == 'CERT':
+                predictions = model.forward(batch[0]) # TODO fix this
+                loss = loss_cert(predictions.squeeze(1),batch[1][:,1])
+                in_list, out_list = model.reg_forward(train_shape, train_shape, num=512)
+                reg_loss = generate_regularizer(in_list, out_list)
+                loss += reg_loss
+                loss.backward()
+                optimizer.step()
+            else:
+                predictions = model.forward(batch[0])
+                loss = loss_mse(predictions,batch[1][:,1])
 
-            predictions = model.forward(batch[0])
+                loss.backward()
+                optimizer.step()
+                if args.model == 'MVNN':
+                    model.transform_weights()
+                elif args.model == 'UMNN':
+                    model.set_steps(int(torch.randint(30,60, [1])))
 
-            loss = loss_mse(predictions,batch[1][:,1])
-
-            loss.backward()
-            optimizer.step()
-            if args.model == 'MVNN':
-                model.transform_weights()
-            elif args.model == 'UMNN':
-                model.set_steps(int(torch.randint(30,60, [1])))
 
 
             wandb.log({"loss": loss.item()})
