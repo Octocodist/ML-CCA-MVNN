@@ -336,6 +336,7 @@ def main(args):
     ### define model ###
     if args.model == 'MVNN':
         model = get_mvnn(train_shape)
+        print("MVNN loaded")
     elif args.model == 'UMNN':
         model = get_umnn(umnn_parameters,train_shape)
         print("UMNN loaded")
@@ -367,9 +368,12 @@ def main(args):
     wandb.config.update({'train_percent': args.train_percent})
 
     ### Training ###
+    i = 0
     for e in range(epochs):
         for batch in tqdm(train_loader):
             optimizer.zero_grad()
+            i+=1
+            print( "loop number :", i)
             if args.model == 'CERT':
                 predictions = model.forward(batch[0]) # TODO fix this
                 loss = loss_cert(predictions.squeeze(1),batch[1][:,1])
@@ -378,27 +382,25 @@ def main(args):
                 loss += reg_loss
                 loss.backward()
                 optimizer.step()
+            elif args.model == 'UMNN':
+                model.set_steps(int(torch.randint(30,60, [1])))
+                predictions = model.forward(batch[0])
+                loss = loss_mse(predictions.squeeze(1),batch[1][:,1])
+
+                loss.backward()
+                optimizer.step()
             else:
                 predictions = model.forward(batch[0])
                 loss = loss_mse(predictions,batch[1][:,1])
 
                 loss.backward()
                 optimizer.step()
-                if args.model == 'MVNN':
-                    model.transform_weights()
-                elif args.model == 'UMNN':
-                    model.set_steps(int(torch.randint(30,60, [1])))
+                model.transform_weights()
 
-            predictions = model.forward(batch[0])
-            if args.model == "MVNN":
-                loss = loss_mse(predictions,batch[1][:,1])
-            elif args.model == "UMNN": 
-                loss = loss_mse(predictions,batch[1][:,1].squeeze())
-
-
-            wandb.log({"loss": loss.item()})
+                wandb.log({"loss": loss.item()})
 
     ### Validation ###
+    print("START validation")
     val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
     for batch in val_loader:
         predictions = model.forward(batch[0])
@@ -424,6 +426,7 @@ if __name__ == "__main__":
     args.nbids = int(25000)
 
     #os.environ['WANDB_SILENT'] = "true"
+    os.environ['WANDB_MODE'] = "offline"
     wandb.init(project="mvnn")
     wandb.config.update(args)
 
