@@ -68,6 +68,7 @@ def init_parser():
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
     parser.add_argument('-num', '--number_of_instances', type=int, default=1, help='Num. training data  (1)')
+    parser.add_argument('-ud', '--use_dummy', type=bool, default=False, help='Add dummy variable to training dataset')
 
     return parser
 def main():
@@ -109,10 +110,14 @@ def main():
     #bids = domain.get_uniform_random_bids(bidder_id,num_bids)
     # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
     print("---Sucessfully back in main---") 
-
     if args.save:
-        print("Starting saving process ")
-        pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
+        if args.use_dummy == False: 
+            print("Starting saving process ")
+            pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
+        else:
+            print("Starting saving process with dummy no changes so far...   ")
+            pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+"_dummy.pkl", "wb"), -1)
+            
         print("Saved")
 
 if __name__ == "__main__":
