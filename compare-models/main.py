@@ -7,11 +7,14 @@ import torch.nn as nn
 import argparse
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn import metrics as skm
 from torch.optim import Adam
 import torch
 from tqdm import tqdm
 from torch.utils.data import TensorDataset
 import torch.nn.functional as F
+
+from scipy.stats import kendalltau
 
 
 
@@ -36,6 +39,7 @@ import torch.utils.data as Data
 import argparse
 from torch.utils.data import DataLoader
 from certify import *
+from config import cert_parameters, mvnn_parameters, umnn_parameters
 
 
 
@@ -76,10 +80,10 @@ def init_parser():
 
 #TODO: take this from a file
 ### default parameters ###
-MVNN_parameters = {'num_hidden_layers': 1,
+mvnn_parameters = {'num_hidden_layers': 1,
                     'num_hidden_units': 20,
                     'layer_type': 'MVNNLayerReLUProjected',
-                    'target_max': 1, # TODO: check
+                    'target_max': 1,
                     'lin_skip_connection': 1,
                     'dropout_prob': 0,
                     'init_method':'custom',
@@ -87,13 +91,14 @@ MVNN_parameters = {'num_hidden_layers': 1,
                     'trainable_ts': True,
                     'init_E': 1,
                     'init_Var': 0.09,
-                    'init_b': 0.05,
-                    'init_bias': 0.05,
-                    'init_little_const': 0.1
-                        }
-umnn_parameters = {"mon_in": 10, "cond_in": 0, "hiddens": [10,10], "n_out": 1, "nb_steps": 50, "device": "cpu"}
+                   'init_b': 0.05,
+                   'init_bias': 0.05,
+                   'init_little_const': 0.1
+                   }
 
-CERT_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
+umnn_parameters = {"mon_in": 10, "cond_in": 0, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
+
+#cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
 
 
 
@@ -146,7 +151,7 @@ def load_dataset(args, num_train_data=1000, train_percent=0):
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
 class EmbeddingNet(nn.Module):
-    def __init__(self, in_embedding, in_main, out_embedding, device='cpu'):
+    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_hidden_nodes=200):
         super(EmbeddingNet, self).__init__()
         self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
                                            nn.Linear(200, 200), nn.ReLU(),
@@ -322,7 +327,6 @@ class MLP_relu_dummy(nn.Module):
         input_mono = input_feature[:, :mono_num]
         input_non_mono = input_feature[:, mono_num:]
         input_mono.requires_grad = True
-
         x = self.mono_fc_in(torch.cat([input_mono, input_non_mono], dim=1))
         in_list.append(input_mono)
 
@@ -342,27 +346,28 @@ class MLP_relu_dummy(nn.Module):
 
         x = self.mono_fc_last(x)
         out_list.append(x)
-
         return in_list, out_list
 
 
-def get_mvnn(input_shape, n_dummy=1):
-    capacity_generic_goods = np.array([1 for _ in range(input_shape-n_dummy)])
+def get_mvnn(args, input_shape,n_dummy=1):
+    if not args.use_dummy:
+        n_dummy = 0
+    capacity_generic_goods = np.array([1 for _ in range(input_shape - n_dummy)])
     model = MVNN_GENERIC(input_dim=input_shape - n_dummy,
-                         num_hidden_layers=MVNN_parameters['num_hidden_layers'],
-                         num_hidden_units=MVNN_parameters['num_hidden_units'],
-                         layer_type=MVNN_parameters['layer_type'],
-                         target_max=MVNN_parameters['target_max'],
-                         lin_skip_connection=MVNN_parameters['lin_skip_connection'],
-                         dropout_prob=MVNN_parameters['dropout_prob'],
-                         init_method=MVNN_parameters['init_method'],
-                         random_ts=MVNN_parameters['random_ts'],
-                         trainable_ts=MVNN_parameters['trainable_ts'],
-                         init_E=MVNN_parameters['init_E'],
-                         init_Var=MVNN_parameters['init_Var'],
-                         init_b=MVNN_parameters['init_b'],
-                         init_bias=MVNN_parameters['init_bias'],
-                         init_little_const=MVNN_parameters['init_little_const'],
+                         num_hidden_layers=mvnn_parameters['num_hidden_layers'],
+                         num_hidden_units=mvnn_parameters['num_hidden_units'],
+                         layer_type=mvnn_parameters['layer_type'],
+                         target_max=mvnn_parameters['target_max'],
+                         lin_skip_connection=mvnn_parameters['lin_skip_connection'],
+                         dropout_prob=mvnn_parameters['dropout_prob'],
+                         init_method=mvnn_parameters['init_method'],
+                         random_ts=mvnn_parameters['random_ts'],
+                         trainable_ts=mvnn_parameters['trainable_ts'],
+                         init_E=mvnn_parameters['init_E'],
+                         init_Var=mvnn_parameters['init_Var'],
+                         init_b=mvnn_parameters['init_b'],
+                         init_bias=mvnn_parameters['init_bias'],
+                         init_little_const=mvnn_parameters['init_little_const'],
                          capacity_generic_goods=capacity_generic_goods
                          )
     return model
@@ -389,31 +394,31 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(model, train, train_shape, val, test):
-    batch_size = 32*2
-    bidder_id = 1
-    n_dummy = 1
-
+def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, batch_size=64):
     # metrics for regression
     loss_mse = torch.nn.MSELoss()
     loss_mae = torch.nn.L1Loss()
+    loss_evar = skm.explained_variance_score
+    loss_medabs = skm.median_absolute_error
+    loss_r2 = skm.r2_score
+    loss_maxerr = skm.max_error
+    loss_mape = skm.mean_absolute_percentage_error
+    loss_d2tw = skm.d2_tweedie_score
+    loss_mpl = skm.mean_pinball_loss
+    loss_d2pl = skm.d2_pinball_score
+    loss_d2abserr = skm.d2_absolute_error_score
+    loss_kendall = kendalltau
 
-    # metrics for classification
-    #loss_cert = torch.nn.BCEWithLogitsLoss()
-    #loss_NLL = torch.nn.NLLLoss()
-    #loss_CrossEntropy = torch.nn.CrossEntropyLoss()
 
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
-    epochs = 13
+    epochs = 1
 
     optimizer = Adam(model.parameters())
 
     wandb.watch(model, log="all")
-    wandb.config.update(args)
-    wandb.config.update(MVNN_parameters)
+    wandb.config.update(args, allow_val_change=True)
+    wandb.config.update(mvnn_parameters)
     wandb.config.update({'optimizer': optimizer})
-    wandb.config.update({'loss': loss_mse})
-    wandb.config.update({'train_percent': args.train_percent})
 
     for e in range(epochs):
         for batch in tqdm(train_loader):
@@ -431,40 +436,80 @@ def train_model(model, train, train_shape, val, test):
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(30,60, [1])))
                 predictions = model.forward(batch[0])
-                loss = loss_mse(predictions.squeeze(1),batch[1][:,1])
+                loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
 
                 loss.backward()
                 optimizer.step()
             else:
                 predictions = model.forward(batch[0])
-                loss = loss_mse(predictions,batch[1][:,1])
+                loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
 
                 loss.backward()
                 optimizer.step()
                 model.transform_weights()
 
             wandb.log({"loss": loss.item()})
-            wandb.log({"loss_mae":loss_mae(predictions.squeeze(1),batch[1][:,1]).item()})
-
-
+            wandb.log({"loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+            wandb.log({"loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+            wandb.log({"loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"kendall_tau_statistics":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0]})
+            wandb.log({"kendall_tau_p_val":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1]})
 
         ### Validation ###
         print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
         for batch in val_loader:
-            #predictions = model.forward(batch[0])
-            predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
+            if args.model == "MVNN":
+                predictions = model.forward(batch[0])
+            else :
+                predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
-            wandb.log({"val_loss": loss.item()})
+            wandb.log({"val_loss": val_loss.item()})
+            wandb.log({"val_loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+            wandb.log({"val_loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+            wandb.log({"val_loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
 
-        ### Test ###
-        test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=True)
-        for batch in test_loader:
-            predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-            #predictions = model.forward(batch[0])
-            val_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
-            wandb.log({"test_loss": loss.item()})
         print("END validation")
+
+    print("Start Testing")
+        ### Test ###
+    test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=True)
+    for batch in test_loader:
+        if args.model == "MVNN":
+            predictions = model.forward(batch[0])
+        else:
+            predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
+        test_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
+        wandb.log({"test_loss": test_loss.item()})
+        wandb.log({"test_loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+        wandb.log({"test_loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
+        wandb.log({"test_loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+        wandb.log({"test_loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+    print("End Testing")
+
     return model
 
 def main(args):
@@ -480,37 +525,47 @@ def main(args):
 
     ### define model ###
     if args.model == 'MVNN':
-        model = get_mvnn(train_shape)
+        model = get_mvnn(args,train_shape)
         print("MVNN loaded")
+        wandb.config.update(mvnn_parameters, allow_val_change=True)
         model = train_model(model, train, train_shape, val, test)
     elif args.model == 'UMNN':
         model = get_umnn(umnn_parameters,train_shape)
         print("UMNN loaded")
+        wandb.config.update(umnn_parameters, allow_val_change=True)
         model = train_model(model, train, train_shape, val, test)
     elif args.model == 'CERT':
-        model = get_cert(args, train_shape, CERT_parameters)
+        model = get_cert(args, train_shape, cert_parameters)
         print("CERT loaded")
+        wandb.config.update(cert_parameters, allow_val_change=True)
         mono_flag = False
         while not mono_flag:
             model = train_model(model, train, train_shape, val, test)
             # certify first layer
             print("Certifying network!")
-            mono_flag = certify_grad_with_gurobi(model.fc_in, model.hidden_layers[0], train_shape)
-            for i in range(1, CERT_parameters["num_hidden_layers"]-2, 2):
-                curr_flag = certify_grad_with_gurobi(model.hidden_layers[i], model.hidden_layers[i + 1],
-                                                     train_shape)
-                if mono_flag and curr_flag:
+            if args.use_dummy:
+                mono_flag = certify_grad_with_gurobi(model.fc_in, model.hidden_layers[0], train_shape)
+                for i in range(1, cert_parameters["num_hidden_layers"] - 2, 2):
+                    curr_flag = certify_grad_with_gurobi(model.hidden_layers[i], model.hidden_layers[i + 1],
+                                                         train_shape)
+                    if mono_flag and curr_flag:
+                        mono_flag = True
+                    else:
+                        mono_flag = False
+                final_flag = certify_grad_with_gurobi(model.hidden_layers[-1], model.
+                                                      fc_last, train_shape)
+                if mono_flag and final_flag:
                     mono_flag = True
                 else:
                     mono_flag = False
-            final_flag = certify_grad_with_gurobi(model.hidden_layers[-1], model.
-                                                  fc_last, train_shape)
-            if mono_flag and final_flag:
-                mono_flag = True
+                    model.lam *= 10
+                    print("Network not monotonic, increasing regularization strength to ", model.lam)
             else:
-                mono_flag = False
-                model.lam *= 10
-                print("Network not monotonic, increasing regularization strength to ", model.lam)
+                n_dummy = 1
+                mono_flag = certify_neural_network(model, train_shape-n_dummy)
+                if not mono_flag:
+                    model.lam *= 10
+                    print("Network not monotonic, increasing regularization strength to ", model.lam)
     else:
         print("Model not implemented yet")
         exit(1234)
@@ -527,7 +582,7 @@ if __name__ == "__main__":
     #os.environ['WANDB_SILENT'] = "true"
     #os.environ['WANDB_MODE'] = "offline"
     wandb.init(project="mvnn")
-    wandb.config.update(args)
+    wandb.config.update(args, allow_val_change=True)
 
     main(args)
 
