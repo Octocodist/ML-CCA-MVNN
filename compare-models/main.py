@@ -399,8 +399,8 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
     loss_d2pl = skm.d2_pinball_score
     loss_d2abserr = skm.d2_absolute_error_score
     loss_kendall = kendalltau
-
-
+    wandb.define_metric("Batch_num")
+    wandb.define_metric("Epoch")
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
     epochs = 20
 
@@ -410,10 +410,9 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
     wandb.config.update(args, allow_val_change=True)
     wandb.config.update(mvnn_parameters)
     wandb.config.update({'optimizer': optimizer})
-    wandb.define_metric("Batch_num")
-    wandb.define_metric("Epoch")
 
-    batch_num = 0 
+
+    batch_num = 0
 
     for e in range(epochs):
         for batch in tqdm(train_loader):
@@ -446,22 +445,23 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                 optimizer.step()
                 model.transform_weights()
 
-            wandb.log({"loss": loss.item()})
-            wandb.log({"loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-            wandb.log({"loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-            wandb.log({"loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"kendall_tau_statistics":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0]})
-            wandb.log({"kendall_tau_p_val":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1]})
+            wandb.log({"loss": loss.item(),
+                       "loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_median_absolute_err": loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_r2": loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_max_err": loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       "kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       "Batch_num":  batch_num,
+                       "Epoch":  e})
 
-        wandb.log({"epoch": e})
         ### Validation ###
         print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
@@ -471,18 +471,22 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
-            wandb.log({"val_loss": val_loss.item()})
-            wandb.log({"val_loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-            wandb.log({"val_loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-            wandb.log({"val_loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-            wandb.log({"val_loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+            wandb.log({"val_loss": val_loss.item(),
+                       "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "val_loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "val_loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_median_absolute_err": loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_r2": loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_max_err": loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       "val_kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       "Batch_num":  batch_num,
+                       "Epoch":  e})
 
         print("END validation")
 
@@ -495,18 +499,29 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
         else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
         test_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
-        wandb.log({"test_loss": test_loss.item()})
-        wandb.log({"test_loss_mean_absolute_error":loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-        wandb.log({"test_loss_mse":loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item()})
-        wandb.log({"test_loss_explained_variance_score":loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_median_absolute_err":loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_r2":loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_max_err":loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_mean absolute_percentage_err":loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_d2_tweedie_score":loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_mean_pinball_loss":loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_d2_pinball_score":loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
-        wandb.log({"test_loss_d2_absolute_err_score":loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item()})
+
+        wandb.log({"test_loss": test_loss.item(),
+                   "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                   "test_loss_mse": loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                   "test_loss_explained_variance_score": loss_evar(y_true=batch[1][:, bidder_id],
+                                                                   y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_median_absolute_err": loss_medabs(y_true=batch[1][:, bidder_id],
+                                                                y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_r2": loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_max_err": loss_maxerr(y_true=batch[1][:, bidder_id],
+                                                    y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:, bidder_id],
+                                                                       y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:, bidder_id],
+                                                                    y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_kendall_tau_statistics": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                   "test_kendall_tau_p_val": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1]})
     print("End Testing")
 
     return model
