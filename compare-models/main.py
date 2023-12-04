@@ -49,7 +49,7 @@ def init_parser():
     ### experiment parameters ###
     parser.add_argument("--dataset", help="dataset to use", default="srvm")
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
-    parser.add_argument("--bidder_id", help="bidder id to use", default=3)
+    parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -507,6 +507,7 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
 def main(args):
     print("--Start Program--")
     print("We are training over:", args.num_seeds, " seeds")
+
 
     for seed in range(args.initial_seed, args.initial_seed + args.num_seeds):
         ### load dataset ###
