@@ -63,7 +63,7 @@ def init_parser():
     parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
     parser.add_argument('-m','--mode',  type=str, help='Choose mode to sample from mrvm, srvm', choices=['mrvm','srvm','gsvm','lsvm'], default='gsvm')
     parser.add_argument('-b','--bidder_id',nargs=1, type=int, help='Define bidder id', default=[1])
-    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[10000])
+    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[25000])
     parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=[100] )
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
