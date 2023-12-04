@@ -47,11 +47,11 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--dataset", help="dataset to use", default="srvm")
+    parser.add_argument("--dataset", help="dataset to use", default="gsvm")
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
-    parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
+    parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
@@ -402,7 +402,7 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
 
 
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
-    epochs = 1
+    epochs = 20
 
     optimizer = Adam(model.parameters())
 
@@ -410,9 +410,16 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
     wandb.config.update(args, allow_val_change=True)
     wandb.config.update(mvnn_parameters)
     wandb.config.update({'optimizer': optimizer})
+    wandb.define_metric("Batch_num")
+    wandb.define_metric("Epoch")
+
+    batch_num = 0 
 
     for e in range(epochs):
         for batch in tqdm(train_loader):
+            wandb.logkkk
+            batch_num +=1
+
             optimizer.zero_grad()
             if args.model == 'CERT':
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
