@@ -50,14 +50,14 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm")
     parser.add_argument("--nbids", help="number of bids to use", default=20)
     parser.add_argument("--bidder_id", help="bidder id to use", default=3)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='UMNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
 
     ### training parameters ###
     parser.add_argument("--epochs", help="number of epochs to train", default=100)
     parser.add_argument("--batch_size", help="batch size to use", default=32)
-    parser.add_argument("--lr", help="learning rate", default=0.001)
+    parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
 
@@ -578,9 +578,11 @@ if __name__ == "__main__":
     args.bidder_id = int(1)
     args.dataset = "gsvm"
     args.nbids = int(25000)
+    if args.model == "MVNN":
+        args.use_dummy = False
 
     #os.environ['WANDB_SILENT'] = "true"
-    #os.environ['WANDB_MODE'] = "offline"
+    os.environ['WANDB_MODE'] = "offline"
     wandb.init(project="mvnn")
     wandb.config.update(args, allow_val_change=True)
 

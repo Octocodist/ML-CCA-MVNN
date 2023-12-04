@@ -63,8 +63,8 @@ def init_parser():
     parser = argparse.ArgumentParser(description='Generate datasets for the ML-CCA-MVNN project')
     parser.add_argument('-m','--mode',  type=str, help='Choose mode to sample from mrvm, srvm', choices=['mrvm','srvm','gsvm','lsvm'], default='gsvm')
     parser.add_argument('-b','--bidder_id',nargs=1, type=int, help='Define bidder id', default=[1])
-    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[250])
-    parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=1234 )
+    parser.add_argument('-n','--num_bids',nargs=1 ,type=int, help='Define bidder id', default=[10000])
+    parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=[100] )
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
     parser.add_argument('-num', '--number_of_instances', type=int, default=1, help='Num. training data  (1)')
@@ -92,11 +92,10 @@ def main():
     bidder_id = args.bidder_id[0]
     num_bids = args.num_bids[0]
     print("num bids is: ", num_bids)
-    seed = args.seed
     print("Current mode :"+ str(args.mode))
     # create an instance
     #domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=1)
-    domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=args.seed)
+    domain = getattr(PySats.getInstance(),"create_"+str(args.mode))(seed=args.seed[0])
     print("FOUND DOMAIN")
     # use the GenericWrapper which uses goods with multiple items per good
     # a bundle is not anymore a binary vector but a vector of integers
@@ -111,12 +110,8 @@ def main():
     # pickle dump the bids to a file named by mvrn and bidder_id and num_bids using pickle
     print("---Sucessfully back in main---") 
     if args.save:
-        if args.use_dummy == False: 
-            print("Starting saving process ")
-            pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+".pkl", "wb"), -1)
-        else:
-            print("Starting saving process with dummy no changes so far...   ")
-            pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(bidder_id)+"_"+str(num_bids)+"_dummy.pkl", "wb"), -1)
+        print("Starting saving process ")
+        pickle.dump((bundles,values), open("datasets/"+str(args.mode)+"/"+str(args.mode)+"_"+str(args.seed[0])+"_"+str(num_bids)+".pkl", "wb"), -1)
             
         print("Saved")
 

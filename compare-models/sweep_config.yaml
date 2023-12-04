@@ -1,0 +1,14 @@
+program: main.py
+method: random
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.001
+  num_hidden_layers:
+    values: ["1", "2", "3"]
+  num_hidden_units:
+    values: ["10", "40","160"]
+
