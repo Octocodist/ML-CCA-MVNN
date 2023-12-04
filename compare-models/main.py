@@ -47,12 +47,14 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--dataset", help="dataset to use", default="lsvm")
-    parser.add_argument("--nbids", help="number of bids to use", default=20)
+    parser.add_argument("--dataset", help="dataset to use", default="srvm")
+    parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=3)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.1, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
+    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
+    parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
     parser.add_argument("--epochs", help="number of epochs to train", default=100)
@@ -102,24 +104,13 @@ umnn_parameters = {"mon_in": 10, "cond_in": 0, "hiddens": [20,20], "n_out": 1, "
 
 
 
-def load_dataset(args, num_train_data=1000, train_percent=0):
+def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
     # load dataset using pickle
     # parse filepath
-    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(args.bidder_id)+"_"+str(args.nbids)+".pkl"
+
+    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
     with open(filepath, "rb") as file:
         dataset = pickle.load(file)
-    if args.dataset == "gsvm":
-        N = 7
-        M = 18
-    if args.dataset == "lsvm":
-        N = 6
-        M = 18
-    if args.dataset == "srvm":
-        N = 7
-        M = 29
-    if args.dataset == "mrvm":
-        N = 10
-        M = 98
     X = dataset[0]
     y = dataset[1]
     if args.use_dummy:
@@ -514,76 +505,76 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
 
 def main(args):
     print("--Start Program--")
+    print("We are training over:", args.num_seeds, " seeds")
 
-    ### load dataset ###
-    train, val, test = load_dataset(args, train_percent=args.train_percent)
-    train_shape = train[0][0].shape[0]
+    for seed in range(args.initial_seed, args.initial_seed + args.num_seeds):
+        ### load dataset ###
+        train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
+        train_shape = train[0][0].shape[0]
 
-    print(train_shape, " is the train shape")
-    print("--- Loaded dataset successfully ---")
+        print(train_shape, " is the train shape and seed is ", seed)
+        print("--- Loaded dataset successfully ---")
 
 
-    ### define model ###
-    if args.model == 'MVNN':
-        model = get_mvnn(args,train_shape)
-        print("MVNN loaded")
-        wandb.config.update(mvnn_parameters, allow_val_change=True)
-        model = train_model(model, train, train_shape, val, test)
-    elif args.model == 'UMNN':
-        model = get_umnn(umnn_parameters,train_shape)
-        print("UMNN loaded")
-        wandb.config.update(umnn_parameters, allow_val_change=True)
-        model = train_model(model, train, train_shape, val, test)
-    elif args.model == 'CERT':
-        model = get_cert(args, train_shape, cert_parameters)
-        print("CERT loaded")
-        wandb.config.update(cert_parameters, allow_val_change=True)
-        mono_flag = False
-        while not mono_flag:
+        ### define model ###
+        if args.model == 'MVNN':
+            model = get_mvnn(args,train_shape)
+            print("MVNN loaded")
+            wandb.config.update(mvnn_parameters, allow_val_change=True)
             model = train_model(model, train, train_shape, val, test)
-            # certify first layer
-            print("Certifying network!")
-            if args.use_dummy:
-                mono_flag = certify_grad_with_gurobi(model.fc_in, model.hidden_layers[0], train_shape)
-                for i in range(1, cert_parameters["num_hidden_layers"] - 2, 2):
-                    curr_flag = certify_grad_with_gurobi(model.hidden_layers[i], model.hidden_layers[i + 1],
-                                                         train_shape)
-                    if mono_flag and curr_flag:
+        elif args.model == 'UMNN':
+            model = get_umnn(umnn_parameters,train_shape)
+            print("UMNN loaded")
+            wandb.config.update(umnn_parameters, allow_val_change=True)
+            model = train_model(model, train, train_shape, val, test)
+        elif args.model == 'CERT':
+            model = get_cert(args, train_shape, cert_parameters)
+            print("CERT loaded")
+            wandb.config.update(cert_parameters, allow_val_change=True)
+            mono_flag = False
+            while not mono_flag:
+                model = train_model(model, train, train_shape, val, test)
+                # certify first layer
+                print("Certifying network!")
+                if args.use_dummy:
+                    mono_flag = certify_grad_with_gurobi(model.fc_in, model.hidden_layers[0], train_shape)
+                    for i in range(1, cert_parameters["num_hidden_layers"] - 2, 2):
+                        curr_flag = certify_grad_with_gurobi(model.hidden_layers[i], model.hidden_layers[i + 1],
+                                                             train_shape)
+                        if mono_flag and curr_flag:
+                            mono_flag = True
+                        else:
+                            mono_flag = False
+                    final_flag = certify_grad_with_gurobi(model.hidden_layers[-1], model.
+                                                          fc_last, train_shape)
+                    if mono_flag and final_flag:
                         mono_flag = True
                     else:
                         mono_flag = False
-                final_flag = certify_grad_with_gurobi(model.hidden_layers[-1], model.
-                                                      fc_last, train_shape)
-                if mono_flag and final_flag:
-                    mono_flag = True
+                        model.lam *= 10
+                        print("Network not monotonic, increasing regularization strength to ", model.lam)
                 else:
-                    mono_flag = False
-                    model.lam *= 10
-                    print("Network not monotonic, increasing regularization strength to ", model.lam)
-            else:
-                n_dummy = 1
-                mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                if not mono_flag:
-                    model.lam *= 10
-                    print("Network not monotonic, increasing regularization strength to ", model.lam)
-    else:
-        print("Model not implemented yet")
-        exit(1234)
+                    n_dummy = 1
+                    mono_flag = certify_neural_network(model, train_shape-n_dummy)
+                    if not mono_flag:
+                        model.lam *= 10
+                        print("Network not monotonic, increasing regularization strength to ", model.lam)
+        else:
+            print("Model not implemented yet")
+            exit(1234)
 
 if __name__ == "__main__":
     print("--Start Parsing Arguments--")
     parser = init_parser()
     args = parser.parse_args()
 
-    args.bidder_id = int(1)
-    args.dataset = "gsvm"
-    args.nbids = int(25000)
+
     if args.model == "MVNN":
         args.use_dummy = False
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    wandb.init(project="mvnn")
+    wandb.init(project="comparative-study")
     wandb.config.update(args, allow_val_change=True)
 
     main(args)
