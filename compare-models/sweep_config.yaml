@@ -11,4 +11,6 @@ parameters:
     values: ["1", "2", "3"]
   num_hidden_units:
     values: ["10", "40","160"]
+  lin_skip_connection:
+    values: ["True", "False"]
 

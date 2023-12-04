@@ -68,7 +68,7 @@ def init_parser():
     parser.add_argument("--num_hidden_units", help="number of hidden units", default=20)
     parser.add_argument("--layer_type", help="layer type", default="MVNNLayerReLUProjected")
     parser.add_argument("--target_max", help="target max", default=1)
-    parser.add_argument("--lin_skip_connection", help="linear skip connection", default=1)
+    parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
@@ -349,7 +349,7 @@ def get_mvnn(args, input_shape,n_dummy=1):
                          num_hidden_units=mvnn_parameters['num_hidden_units'],
                          layer_type=mvnn_parameters['layer_type'],
                          target_max=mvnn_parameters['target_max'],
-                         lin_skip_connection=mvnn_parameters['lin_skip_connection'],
+                         lin_skip_connection=args.lin_skip_connection,
                          dropout_prob=mvnn_parameters['dropout_prob'],
                          init_method=mvnn_parameters['init_method'],
                          random_ts=mvnn_parameters['random_ts'],
@@ -454,6 +454,7 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
             wandb.log({"kendall_tau_statistics":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0]})
             wandb.log({"kendall_tau_p_val":kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1]})
 
+        wandb.log({"epoch": e})
         ### Validation ###
         print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
