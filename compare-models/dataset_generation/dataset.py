@@ -42,16 +42,12 @@ def generate_all_bundle_value_pairs(world, k, mode):
        bundle_space = np.unique(np.array(bundle_space), axis=0)
        print("Num Unique Samples: ", len(bundle_space))
 
-
-
-       bundle_space = [np.random.choice([0, 1], len(M)) for _ in range(k)]
-       # Only use unique samples.
-       bundle_space = np.unique(np.array(bundle_space), axis=0)
-       print("Num Unique Samples: ", len(bundle_space))
-    else:
+    elif mode == 'gsvm' or mode == 'lsvm':
        #this creates a list of lists of length len(M) with all possible combinations of 0 and 1
        #this calculates the cartesian product of the list [0,1] with itself len(M) times
        bundle_space = list(itertools.product([0, 1], repeat=len(M)))
+    else:   
+        print("MODE NOT FOUND: ", str(mode)) 
 
     #bundle_value_pairs = np.array(
     #    [list(x) + [world.calculate_value(bidder_id, x) for bidder_id in N] for x in tqdm(bundle_space)])

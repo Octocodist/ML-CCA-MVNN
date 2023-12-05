@@ -1,5 +1,8 @@
 import os
 
+
+
+
 import numpy
 import pickle
 import torch.nn as nn
@@ -47,10 +50,10 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--dataset", help="dataset to use", default="gsvm")
+    parser.add_argument("--dataset", help="dataset to use", default="mrvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
@@ -401,22 +404,25 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
     loss_kendall = kendalltau
     wandb.define_metric("Batch_num")
     wandb.define_metric("Epoch")
+
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
+
+
+
+
     epochs = 20
 
     optimizer = Adam(model.parameters())
 
     wandb.watch(model, log="all")
     wandb.config.update(args, allow_val_change=True)
-    wandb.config.update(mvnn_parameters)
     wandb.config.update({'optimizer': optimizer})
 
 
     batch_num = 0
 
-    for e in range(epochs):
-        for batch in tqdm(train_loader):
-            wandb.logkkk
+    for e in tqdm(range(epochs)):
+        for batch in train_loader:
             batch_num +=1
 
             optimizer.zero_grad()
@@ -470,7 +476,8 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                 predictions = model.forward(batch[0])
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-            val_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
+            val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+            print("Val loss is : " ,val_loss.item())
             wandb.log({"val_loss": val_loss.item(),
                        "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "val_loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -498,7 +505,8 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
             predictions = model.forward(batch[0])
         else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-        test_loss = loss_mse(predictions.squeeze(1), batch[1][:, 1])
+        test_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+        print("test loss is : ", test_loss.item())
 
         wandb.log({"test_loss": test_loss.item(),
                    "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
@@ -530,8 +538,19 @@ def main(args):
     print("--Start Program--")
     print("We are training over:", args.num_seeds, " seeds")
 
+    wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
+    wandb.config.update(args, allow_val_change=True)
 
-    for seed in range(args.initial_seed, args.initial_seed + args.num_seeds):
+
+    for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
+        #set run_id 
+        group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
+        run_id = group_id + str(seed) 
+        wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
+        wandb.config.update(cert_parameters, allow_val_change=True)
+
+
+
         ### load dataset ###
         train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
         train_shape = train[0][0].shape[0]
@@ -554,35 +573,23 @@ def main(args):
         elif args.model == 'CERT':
             model = get_cert(args, train_shape, cert_parameters)
             print("CERT loaded")
-            wandb.config.update(cert_parameters, allow_val_change=True)
             mono_flag = False
             while not mono_flag:
                 model = train_model(model, train, train_shape, val, test)
                 # certify first layer
                 print("Certifying network!")
-                if args.use_dummy:
-                    mono_flag = certify_grad_with_gurobi(model.fc_in, model.hidden_layers[0], train_shape)
-                    for i in range(1, cert_parameters["num_hidden_layers"] - 2, 2):
-                        curr_flag = certify_grad_with_gurobi(model.hidden_layers[i], model.hidden_layers[i + 1],
-                                                             train_shape)
-                        if mono_flag and curr_flag:
-                            mono_flag = True
-                        else:
-                            mono_flag = False
-                    final_flag = certify_grad_with_gurobi(model.hidden_layers[-1], model.
-                                                          fc_last, train_shape)
-                    if mono_flag and final_flag:
+                assert(args.use_dummy)
+                n_dummy = 1
+                print("Start Certification") 
+                mono_flag = certify_neural_network(model, train_shape-n_dummy)
+                if not mono_flag:
+                    model.lam *= 10
+                    print("Network not monotonic, increasing regularization strength to ", model.lam)
+                    wandb.log({"lam":model.lam})
+
+                    if model.lam == 1000000000:
+                        print("Exiting because of too many trys in CERT") 
                         mono_flag = True
-                    else:
-                        mono_flag = False
-                        model.lam *= 10
-                        print("Network not monotonic, increasing regularization strength to ", model.lam)
-                else:
-                    n_dummy = 1
-                    mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                    if not mono_flag:
-                        model.lam *= 10
-                        print("Network not monotonic, increasing regularization strength to ", model.lam)
         else:
             print("Model not implemented yet")
             exit(1234)
@@ -598,8 +605,10 @@ if __name__ == "__main__":
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    wandb.init(project="comparative-study")
-    wandb.config.update(args, allow_val_change=True)
+    #wandb.init(project="MVNN-Runs")
+    #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
+    #wandb.config.update(args, allow_val_change=True)
 
     main(args)
+    wandb.finish()
 
