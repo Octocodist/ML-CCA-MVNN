@@ -604,10 +604,10 @@ if __name__ == "__main__":
         args.use_dummy = False
 
     #os.environ['WANDB_SILENT'] = "true"
-    os.environ['WANDB_MODE'] = "offline"
-    #wandb.init(project="MVNN-Runs")
+    #os.environ['WANDB_MODE'] = "offline"
+    wandb.init(project="MVNN-Runs")
     #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
-    #wandb.config.update(args, allow_val_change=True)
+    wandb.config.update(args, allow_val_change=True)
 
     main(args)
     wandb.finish()

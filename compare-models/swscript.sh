@@ -8,7 +8,7 @@ echo "sweep ID is: $tmp "
 
 for i in {0..10}
 do 
-    wandb agent --count 200 mvnn-ma/mvnn/$tmp
+    wandb agent --count 200 mvnn-ma/MVNN-Runs/$tmp
 done    
 
 #export SWEEP_ID=$(awk '/ID:/ {print $6}' tmp )

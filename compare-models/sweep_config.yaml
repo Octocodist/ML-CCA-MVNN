@@ -14,6 +14,6 @@ parameters:
   lin_skip_connection:
     values: ["True", "False"]
   model:
-    values: ["CERT"]
+    values: ["MVNN"]
   dataset:
     values: ["gsvm", "lsvm", "srvm", "mrvm"]

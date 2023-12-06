@@ -1,12 +1,12 @@
+#
+domains=("lsvm" "gsvm" "srvm" "mrvm")
 
-#domains=("lsvm" "gsvm" "srvm" "mrvm")
-
-domains=("srvm")
+#domains=("srvm")
 
 
-for seed in {110..100}
+for seed in {100..150}
 do 
-   echo "Start Seed"$seed 
+   echo "Start Seed " $seed 
    for dom in "${domains[@]}"
    do 
        python dataset.py -s --mode $dom  --seed $seed 
