@@ -58,6 +58,7 @@ def init_parser():
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
+    parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
     parser.add_argument("--epochs", help="number of epochs to train", default=100)
@@ -404,6 +405,34 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
     loss_kendall = kendalltau
     wandb.define_metric("Batch_num")
     wandb.define_metric("Epoch")
+    wandb.define_metric("loss_tot", step_metric="Batch_num")
+    wandb.define_metric("loss_mse", step_metric="Batch_num")
+    wandb.define_metric("loss_mae", step_metric="Batch_num")
+    wandb.define_metric("loss_evar", step_metric="Batch_num")
+    wandb.define_metric("loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("loss_r2", step_metric="Batch_num")
+    wandb.define_metric("loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("loss_mape", step_metric="Batch_num")
+    wandb.define_metric("loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2pl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2abserr", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_statistics", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_p_val", step_metric="Batch_num")
+    wandb.define_metric("val_loss_tot", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mse", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mae", step_metric="Batch_num")
+    wandb.define_metric("val_loss_evar", step_metric="Batch_num")
+    wandb.define_metric("val_loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("val_loss_r2", step_metric="Batch_num")
+    wandb.define_metric("val_loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mape", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
+
+
 
     train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
 
@@ -434,24 +463,25 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
+                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item()})
 
 
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(30,60, [1])))
                 predictions = model.forward(batch[0])
-                loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+                loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
 
-                loss.backward()
+                loss_tot.backward()
                 optimizer.step()
             else:
                 predictions = model.forward(batch[0])
-                loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+                loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
 
-                loss.backward()
+                loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
 
-            wandb.log({"loss": loss.item(),
+            wandb.log({"loss": loss_tot.item(),
                        "loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -595,6 +625,11 @@ def main(args):
             exit(1234)
 
 if __name__ == "__main__":
+
+    sweep = True
+    if sweep:
+
+
     print("--Start Parsing Arguments--")
     parser = init_parser()
     args = parser.parse_args()
