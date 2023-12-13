@@ -50,7 +50,7 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--dataset", help="dataset to use", default="mrvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
+    parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
@@ -58,7 +58,7 @@ def init_parser():
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
-    parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
+    #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
     parser.add_argument("--epochs", help="number of epochs to train", default=100)
@@ -163,10 +163,7 @@ class EmbeddingNet(nn.Module):
         return torch.sigmoid(self.umnn(x, h))
 
 
-
- ### CERT Section ###
-
-
+### CERT Section ###
 def generate_regularizer(in_list, out_list):
     length = len(in_list)
     reg_loss = 0.
@@ -368,7 +365,7 @@ def get_mvnn(args, input_shape,n_dummy=1):
     return model
 
 def get_umnn(umnn_parameters, input_shape, n_dummy=1, n_items=18):
-    model = EmbeddingNet(in_embedding =input_shape, in_main=input_shape, out_embedding=n_dummy, device="cpu")
+    model = EmbeddingNet(in_embedding =input_shape, in_main=input_shape, out_embedding=input_shape, device="cpu")
     return model
 def get_cert(args, train_shape, cert_parameters):
     if args.use_dummy:
@@ -389,7 +386,8 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, batch_size=64):
+def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy=1, batch_size=64, cumm_batch=0, cumm_epoch=0):
+    print("--Starting Training--") 
     # metrics for regression
     loss_mse = torch.nn.MSELoss()
     loss_mae = torch.nn.L1Loss()
@@ -439,18 +437,19 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
 
 
 
-    epochs = 20
+    epochs = 200
 
     optimizer = Adam(model.parameters())
 
     wandb.watch(model, log="all")
-    wandb.config.update(args, allow_val_change=True)
-    wandb.config.update({'optimizer': optimizer})
 
 
-    batch_num = 0
+    # this is only relevant for CERT where we add previous batch iterations 
+    batch_num = cumm_batch 
+    epoch_num = cumm_epoch
 
     for e in tqdm(range(epochs)):
+        epoch_num += 1
         for batch in train_loader:
             batch_num +=1
 
@@ -463,7 +462,7 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item()})
+                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
 
             elif args.model == 'UMNN':
@@ -496,13 +495,13 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                        "kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
                        "kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        "Batch_num":  batch_num,
-                       "Epoch":  e})
+                       "Epoch":  epoch_num })
 
         ### Validation ###
         print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
         for batch in val_loader:
-            if args.model == "MVNN":
+            if args.model == "MVNN" or args.model == "UMNN":
                 predictions = model.forward(batch[0])
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
@@ -523,7 +522,7 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                        "val_kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
                        "val_kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        "Batch_num":  batch_num,
-                       "Epoch":  e})
+                       "Epoch":  epoch_num})
 
         print("END validation")
 
@@ -561,15 +560,38 @@ def train_model(model, train, train_shape, val, test, bidder_id=1, n_dummy=1, ba
                    "test_kendall_tau_statistics": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
                    "test_kendall_tau_p_val": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1]})
     print("End Testing")
+    if args.model == "CERT":
+        return model, batch_num, epoch_num 
 
     return model
 
-def main(args):
-    print("--Start Program--")
+def main(args=None):
+    print("--Starting main--")
+
+
+    parser = init_parser()
+    args = parser.parse_args()
+
+    print("####################################")
+    print("Testing passing of OG vars : ", args.model, "\n and args are :", args )
+    print("####################################")
+
+
+
+
     print("We are training over:", args.num_seeds, " seeds")
 
-    wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
-    wandb.config.update(args, allow_val_change=True)
+
+
+    wandb.init(project="Sweeps", id="Initial_run")
+    args.__dict__.update(wandb.config)
+    
+    print("####################################")
+    print("Testing passing of new args from wandb: ", args.model, "\n and config is : ", wandb.config, "\n and the new args are: ", args)
+    print("####################################")
+
+    if args.model == "MVNN":
+        args.use_dummy = False
 
 
     for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
@@ -578,6 +600,10 @@ def main(args):
         run_id = group_id + str(seed) 
         wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
         wandb.config.update(cert_parameters, allow_val_change=True)
+        wandb.config.update(mvnn_parameters, allow_val_change=True)
+        wandb.config.update(umnn_parameters, allow_val_change=True)
+        #wandb.config.update(args, allow_val_change=True)
+        wandb.log({"model": args.model, "dataset": args.dataset})
 
 
 
@@ -593,19 +619,24 @@ def main(args):
         if args.model == 'MVNN':
             model = get_mvnn(args,train_shape)
             print("MVNN loaded")
-            wandb.config.update(mvnn_parameters, allow_val_change=True)
-            model = train_model(model, train, train_shape, val, test)
+            #wandb.config.update(mvnn_parameters, allow_val_change=True)
+            model = train_model(args, model, train, train_shape, val, test)
         elif args.model == 'UMNN':
-            model = get_umnn(umnn_parameters,train_shape)
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            print("Device is : " , device) 
+            model = get_umnn(umnn_parameters,train_shape, device)
             print("UMNN loaded")
-            wandb.config.update(umnn_parameters, allow_val_change=True)
-            model = train_model(model, train, train_shape, val, test)
+            #wandb.config.update(umnn_parameters, allow_val_change=True)
+            model = train_model(args, model, train, train_shape, val, test)
         elif args.model == 'CERT':
+            print("LOADING CERT" ) 
             model = get_cert(args, train_shape, cert_parameters)
             print("CERT loaded")
+            cumm_batch = 0 
+            cumm_epoch = 0 
             mono_flag = False
             while not mono_flag:
-                model = train_model(model, train, train_shape, val, test)
+                model, cumm_batch,cumm_epoch  = train_model(args, model, train, train_shape, val, test,cumm_batch= cumm_batch, cumm_epoch= cumm_epoch )
                 # certify first layer
                 print("Certifying network!")
                 assert(args.use_dummy)
@@ -617,33 +648,50 @@ def main(args):
                     print("Network not monotonic, increasing regularization strength to ", model.lam)
                     wandb.log({"lam":model.lam})
 
-                    if model.lam == 1000000000:
+                    if model.lam == 1000:
                         print("Exiting because of too many trys in CERT") 
                         mono_flag = True
         else:
             print("Model not implemented yet")
             exit(1234)
+    wandb.finish()
 
 if __name__ == "__main__":
+    print("--Starting wandb sweep init-- ")
+    #parser = init_parser()
+    #args = parser.parse_args()
 
-    sweep = True
-    if sweep:
-
-
-    print("--Start Parsing Arguments--")
-    parser = init_parser()
-    args = parser.parse_args()
-
-
-    if args.model == "MVNN":
-        args.use_dummy = False
 
     #os.environ['WANDB_SILENT'] = "true"
-    #os.environ['WANDB_MODE'] = "offline"
-    wandb.init(project="MVNN-Runs")
-    #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
-    wandb.config.update(args, allow_val_change=True)
+    os.environ['WANDB_MODE'] = "offline"
+    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
 
-    main(args)
-    wandb.finish()
+
+    #wandb.init(project="MVNN-Runs")
+    #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
+    #wandb.config.update(args, allow_val_change=True)
+    sweep_config = { 
+        "method": "random", 
+        "metric": {"goal": "minimize", "name": "val_loss"}, 
+        "parameters": {
+            "learning_rate": {"min": 0.0001, "max": 0.01},
+            "num_hidden_layers": { "values" : [1,2,3]},
+            "num_hidden_units": { "values": [10,40,160]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "model": {"values":["MVNN"]},
+            "dataset": {"values":["gsvm"]}, 
+            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            }
+        }
+    sweep_id = wandb.sweep(sweep=sweep_config, project= "Sweeps")
+
+    wandb.agent(sweep_id, function=main, count=200) 
+
+
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print("Device is : " , device) 
+        
+
+    #main(args, device)
 
