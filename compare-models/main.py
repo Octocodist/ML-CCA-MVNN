@@ -104,7 +104,7 @@ mvnn_parameters = {'num_hidden_layers': 1,
 
 umnn_parameters = {"mon_in": 10, "cond_in": 0, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
 
-#cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
+cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
 
 
 
@@ -466,7 +466,7 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
 
 
             elif args.model == 'UMNN':
-                model.set_steps(int(torch.randint(30,60, [1])))
+                model.set_steps(int(torch.randint(10,30, [1])))
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
 
@@ -566,9 +566,8 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
     return model
 
 def main(args=None):
+
     print("--Starting main--")
-
-
     parser = init_parser()
     args = parser.parse_args()
 
@@ -576,14 +575,12 @@ def main(args=None):
     print("Testing passing of OG vars : ", args.model, "\n and args are :", args )
     print("####################################")
 
-
-
-
     print("We are training over:", args.num_seeds, " seeds")
-
-
-
-    wandb.init(project="Sweeps", id="Initial_run")
+    wandb.init(project="MVNN-Sweeps", group="Initial_runs")
+    #wandb.config.update(cert_parameters, allow_val_change=True)
+    #wandb.config.update(mvnn_parameters, allow_val_change=True)
+    #wandb.config.update(umnn_parameters, allow_val_change=True)
+    #wandb.config.update(args, allow_val_change=True)
     args.__dict__.update(wandb.config)
     
     print("####################################")
@@ -597,12 +594,8 @@ def main(args=None):
     for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
         #set run_id 
         group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
-        run_id = group_id + str(seed) 
+        run_id = group_id + str(seed) + str(np.random.randint(2000))
         wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
-        wandb.config.update(cert_parameters, allow_val_change=True)
-        wandb.config.update(mvnn_parameters, allow_val_change=True)
-        wandb.config.update(umnn_parameters, allow_val_change=True)
-        #wandb.config.update(args, allow_val_change=True)
         wandb.log({"model": args.model, "dataset": args.dataset})
 
 
@@ -619,15 +612,18 @@ def main(args=None):
         if args.model == 'MVNN':
             model = get_mvnn(args,train_shape)
             print("MVNN loaded")
-            #wandb.config.update(mvnn_parameters, allow_val_change=True)
+
             model = train_model(args, model, train, train_shape, val, test)
         elif args.model == 'UMNN':
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             print("Device is : " , device) 
             model = get_umnn(umnn_parameters,train_shape, device)
             print("UMNN loaded")
-            #wandb.config.update(umnn_parameters, allow_val_change=True)
+
             model = train_model(args, model, train, train_shape, val, test)
+
+
+
         elif args.model == 'CERT':
             print("LOADING CERT" ) 
             model = get_cert(args, train_shape, cert_parameters)
@@ -665,6 +661,8 @@ if __name__ == "__main__":
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
     os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    #os.chdir('/cluster/scratch/filles')
+    print(os.getcwd(), " : is the current working directory")
 
 
     #wandb.init(project="MVNN-Runs")
@@ -678,14 +676,14 @@ if __name__ == "__main__":
             "num_hidden_layers": { "values" : [1,2,3]},
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
-            "model": {"values":["MVNN"]},
+            "model": {"values":["UMNN"]},
             "dataset": {"values":["gsvm"]}, 
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project= "Sweeps")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
 
-    wandb.agent(sweep_id, function=main, count=200) 
+    wandb.agent(sweep_id, function=main, count=100) 
 
 
 
