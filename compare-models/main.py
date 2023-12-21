@@ -54,7 +54,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("--epochs", help="number of epochs to train", default=200)
+    parser.add_argument("--epochs", help="number of epochs to train", default=1)
     parser.add_argument("--batch_size", help="batch size to use", default=32)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -439,7 +439,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
 
 
             # TODO add this to an array and log it
-            metric.append([loss_tot.item(),
+            metrics.append([loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -474,7 +474,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
 
         ### Validation ###
         print("START validation")
-        val_loader = torch.utils.data.DataLoader(val, batch_size=batch_size, shuffle=True)
+        val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
         for batch in val_loader:
             if args.model == "MVNN" or args.model == "UMNN":
                 predictions = model.forward(batch[0])
@@ -502,7 +502,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                        "Epoch":  epoch_num})
             """
         print("END validation")
-
+    """
     print("Start Testing")
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=True)
@@ -537,10 +537,11 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                    "test_kendall_tau_statistics": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
                    "test_kendall_tau_p_val": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1]})
     print("End Testing")
+    """
     if args.model == "CERT":
         return model, batch_num, epoch_num 
 
-    return model
+    return model, metrics
 
 #TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
@@ -631,7 +632,7 @@ def main(args=None):
         args.use_dummy = False
 
     metrics = []
-    bidder_ids = [0,2,3]
+    bidder_ids = [0]
     for bidder in bidder_ids:
         for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
             group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
@@ -655,8 +656,8 @@ def main(args=None):
             model, metrics = train_model(args, model, train, val, metrics, bidder_id= bidder)
             print("--- Trained model successfully ---")
 
-            ### log metrics ###
-            log_metrics(args, metrics)
+        ### log metrics ###
+        log_metrics(args, metrics)
 
 
             if args.model == "CERT":
