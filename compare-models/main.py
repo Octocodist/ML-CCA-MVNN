@@ -1,12 +1,8 @@
 import os
 
-
-
-
 import numpy
 import pickle
 import torch.nn as nn
-
 import argparse
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -18,9 +14,6 @@ from torch.utils.data import TensorDataset
 import torch.nn.functional as F
 
 from scipy.stats import kendalltau
-
-
-
 import wandb
 
 ### custom imports ###
@@ -53,7 +46,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
@@ -61,7 +54,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("--epochs", help="number of epochs to train", default=100)
+    parser.add_argument("--epochs", help="number of epochs to train", default=200)
     parser.add_argument("--batch_size", help="batch size to use", default=32)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -375,7 +368,6 @@ def get_cert(args, train_shape, cert_parameters):
     return model
 
 
-
 # TODOS:
 # define nn parameters -> use default for now (see mvnn_generic.py)
 # define epochs and test size
@@ -386,10 +378,13 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy=1, batch_size=64, cumm_batch=0, cumm_epoch=0):
-    print("--Starting Training--") 
+def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0):
+    print("--Starting Training--")
+    train_shape = train[0][0].shape[0]
     # metrics for regression
     loss_mse = torch.nn.MSELoss()
+
+    ### define metrics ###
     loss_mae = torch.nn.L1Loss()
     loss_evar = skm.explained_variance_score
     loss_medabs = skm.median_absolute_error
@@ -401,54 +396,17 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
     loss_d2pl = skm.d2_pinball_score
     loss_d2abserr = skm.d2_absolute_error_score
     loss_kendall = kendalltau
-    wandb.define_metric("Batch_num")
-    wandb.define_metric("Epoch")
-    wandb.define_metric("loss_tot", step_metric="Batch_num")
-    wandb.define_metric("loss_mse", step_metric="Batch_num")
-    wandb.define_metric("loss_mae", step_metric="Batch_num")
-    wandb.define_metric("loss_evar", step_metric="Batch_num")
-    wandb.define_metric("loss_medabs", step_metric="Batch_num")
-    wandb.define_metric("loss_r2", step_metric="Batch_num")
-    wandb.define_metric("loss_maxerr", step_metric="Batch_num")
-    wandb.define_metric("loss_mape", step_metric="Batch_num")
-    wandb.define_metric("loss_d2tw", step_metric="Batch_num")
-    wandb.define_metric("loss_mpl", step_metric="Batch_num")
-    wandb.define_metric("loss_d2pl", step_metric="Batch_num")
-    wandb.define_metric("loss_d2abserr", step_metric="Batch_num")
-    wandb.define_metric("kendall_tau_statistics", step_metric="Batch_num")
-    wandb.define_metric("kendall_tau_p_val", step_metric="Batch_num")
-    wandb.define_metric("val_loss_tot", step_metric="Batch_num")
-    wandb.define_metric("val_loss_mse", step_metric="Batch_num")
-    wandb.define_metric("val_loss_mae", step_metric="Batch_num")
-    wandb.define_metric("val_loss_evar", step_metric="Batch_num")
-    wandb.define_metric("val_loss_medabs", step_metric="Batch_num")
-    wandb.define_metric("val_loss_r2", step_metric="Batch_num")
-    wandb.define_metric("val_loss_maxerr", step_metric="Batch_num")
-    wandb.define_metric("val_loss_mape", step_metric="Batch_num")
-    wandb.define_metric("val_loss_d2tw", step_metric="Batch_num")
-    wandb.define_metric("val_loss_mpl", step_metric="Batch_num")
-    wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
-    wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
 
-
-
-    train_loader = torch.utils.data.DataLoader(train, batch_size=batch_size, shuffle=True)
-
-
-
-
-    epochs = 200
+    train_loader = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=True)
 
     optimizer = Adam(model.parameters())
 
     wandb.watch(model, log="all")
-
-
-    # this is only relevant for CERT where we add previous batch iterations 
+    # this is only relevant for CERT where we add previous batch iterations
     batch_num = cumm_batch 
     epoch_num = cumm_epoch
 
-    for e in tqdm(range(epochs)):
+    for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
             batch_num +=1
@@ -462,25 +420,42 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
-
+                #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(10,30, [1])))
+
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-
                 loss_tot.backward()
                 optimizer.step()
+
             else:
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-
                 loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
 
-            wandb.log({"loss": loss_tot.item(),
+
+            # TODO add this to an array and log it
+            metric.append([loss_tot.item(),
+                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       batch_num,
+                       epoch_num] )
+            """wandb.log({"loss": loss_tot.item(),
                        "loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -495,7 +470,7 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
                        "kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
                        "kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        "Batch_num":  batch_num,
-                       "Epoch":  epoch_num })
+                       "Epoch":  epoch_num })"""
 
         ### Validation ###
         print("START validation")
@@ -507,6 +482,8 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
             print("Val loss is : " ,val_loss.item())
+
+            """
             wandb.log({"val_loss": val_loss.item(),
                        "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "val_loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -523,7 +500,7 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
                        "val_kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        "Batch_num":  batch_num,
                        "Epoch":  epoch_num})
-
+            """
         print("END validation")
 
     print("Start Testing")
@@ -565,6 +542,69 @@ def train_model(args, model, train, train_shape, val, test, bidder_id=1, n_dummy
 
     return model
 
+#TODO Work on defining parameters smoothly
+def get_model(args, train_shape):
+    ### define model ###
+    if args.model == 'MVNN':
+        model = get_mvnn(args, train_shape)
+
+    elif args.model == 'UMNN':
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print("Device is : ", device)
+        model = get_umnn(umnn_parameters, train_shape, device)
+
+    elif args.model == 'CERT':
+        print("LOADING CERT")
+        model = get_cert(args, train_shape, cert_parameters)
+    return  model
+
+def log_metrics(args, metrics):
+    wandb.define_metric("Batch_num")
+    wandb.define_metric("Epoch")
+    wandb.define_metric("loss_tot", step_metric="Batch_num")
+    wandb.define_metric("loss_mse", step_metric="Batch_num")
+    wandb.define_metric("loss_mae", step_metric="Batch_num")
+    wandb.define_metric("loss_evar", step_metric="Batch_num")
+    wandb.define_metric("loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("loss_r2", step_metric="Batch_num")
+    wandb.define_metric("loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("loss_mape", step_metric="Batch_num")
+    wandb.define_metric("loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2pl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2abserr", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_statistics", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_p_val", step_metric="Batch_num")
+    wandb.define_metric("val_loss_tot", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mse", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mae", step_metric="Batch_num")
+    wandb.define_metric("val_loss_evar", step_metric="Batch_num")
+    wandb.define_metric("val_loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("val_loss_r2", step_metric="Batch_num")
+    wandb.define_metric("val_loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mape", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
+    mets_array = np.array(metrics)
+    for i in range(mets_array.shape[0]):
+        wandb.log({"loss_tot": mets_array[i,0],
+                   "loss_mse": mets_array[i,1],
+                   "loss_mae": mets_array[i,2],
+                   "loss_evar": mets_array[i,3],
+                   "loss_medabs": mets_array[i,4],
+                   "loss_r2": mets_array[i,5],
+                   "loss_maxerr": mets_array[i,6],
+                   "loss_mape": mets_array[i,7],
+                   "loss_d2tw": mets_array[i,8],
+                   "loss_mpl": mets_array[i,9],
+                   "loss_d2pl": mets_array[i,10],
+                   "loss_d2abserr": mets_array[i,11],
+                   "kendall_tau_statistics": mets_array[i,12],
+                   "kendall_tau_p_val": mets_array[i,13],
+                   "Batch_num": mets_array[i,14],
+                   "Epoch": mets_array[i,15]})
 def main(args=None):
 
     print("--Starting main--")
@@ -581,7 +621,7 @@ def main(args=None):
     #wandb.config.update(mvnn_parameters, allow_val_change=True)
     #wandb.config.update(umnn_parameters, allow_val_change=True)
     #wandb.config.update(args, allow_val_change=True)
-    args.__dict__.update(wandb.config)
+    #args.__dict__.update(wandb.config)
     
     print("####################################")
     print("Testing passing of new args from wandb: ", args.model, "\n and config is : ", wandb.config, "\n and the new args are: ", args)
@@ -590,77 +630,66 @@ def main(args=None):
     if args.model == "MVNN":
         args.use_dummy = False
 
-
-    for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
-        #set run_id 
-        group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
-        run_id = group_id + str(seed) + str(np.random.randint(2000))
-        wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
-        wandb.log({"model": args.model, "dataset": args.dataset})
-
-
-
-        ### load dataset ###
-        train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-        train_shape = train[0][0].shape[0]
-
-        print(train_shape, " is the train shape and seed is ", seed)
-        print("--- Loaded dataset successfully ---")
+    metrics = []
+    bidder_ids = [0,2,3]
+    for bidder in bidder_ids:
+        for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
+            group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
+            run_id = group_id + str(seed) + str(np.random.randint(2000))
+            wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
+            wandb.log({"model": args.model, "dataset": args.dataset})
 
 
-        ### define model ###
-        if args.model == 'MVNN':
-            model = get_mvnn(args,train_shape)
-            print("MVNN loaded")
+            ### load dataset ###
+            train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
+            train_shape = train[0][0].shape[0]
 
-            model = train_model(args, model, train, train_shape, val, test)
-        elif args.model == 'UMNN':
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            print("Device is : " , device) 
-            model = get_umnn(umnn_parameters,train_shape, device)
-            print("UMNN loaded")
+            print(train_shape, " is the train shape and seed is ", seed)
+            print("--- Loaded dataset successfully ---")
 
-            model = train_model(args, model, train, train_shape, val, test)
+            ### define model ###
+            model = get_model(args, train_shape)
+            print("--- Loaded model successfully ---")
+
+            ### train model ###
+            model, metrics = train_model(args, model, train, val, metrics, bidder_id= bidder)
+            print("--- Trained model successfully ---")
+
+            ### log metrics ###
+            log_metrics(args, metrics)
 
 
+            if args.model == "CERT":
+                cumm_batch = 0
+                cumm_epoch = 0
+                mono_flag = False
+                while not mono_flag:
+                    model, cumm_batch,cumm_epoch  = train_model(args, model, train, train_shape, val, test,cumm_batch= cumm_batch, cumm_epoch= cumm_epoch )
+                    # certify first layer
+                    print("Certifying network!")
+                    assert(args.use_dummy)
+                    n_dummy = 1
+                    print("Start Certification")
+                    mono_flag = certify_neural_network(model, train_shape-n_dummy)
+                    if not mono_flag:
+                        model.lam *= 10
+                        print("Network not monotonic, increasing regularization strength to ", model.lam)
+                        wandb.log({"lam":model.lam})
 
-        elif args.model == 'CERT':
-            print("LOADING CERT" ) 
-            model = get_cert(args, train_shape, cert_parameters)
-            print("CERT loaded")
-            cumm_batch = 0 
-            cumm_epoch = 0 
-            mono_flag = False
-            while not mono_flag:
-                model, cumm_batch,cumm_epoch  = train_model(args, model, train, train_shape, val, test,cumm_batch= cumm_batch, cumm_epoch= cumm_epoch )
-                # certify first layer
-                print("Certifying network!")
-                assert(args.use_dummy)
-                n_dummy = 1
-                print("Start Certification") 
-                mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                if not mono_flag:
-                    model.lam *= 10
-                    print("Network not monotonic, increasing regularization strength to ", model.lam)
-                    wandb.log({"lam":model.lam})
-
-                    if model.lam == 1000:
-                        print("Exiting because of too many trys in CERT") 
-                        mono_flag = True
-        else:
-            print("Model not implemented yet")
-            exit(1234)
+                        if model.lam == 1000:
+                            print("Exiting because of too many trys in CERT")
+                            mono_flag = True
+            else:
+                print("Model not implemented yet")
     wandb.finish()
 
 if __name__ == "__main__":
     print("--Starting wandb sweep init-- ")
-    #parser = init_parser()
-    #args = parser.parse_args()
 
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    #os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
     #os.chdir('/cluster/scratch/filles')
     print(os.getcwd(), " : is the current working directory")
 
@@ -681,15 +710,17 @@ if __name__ == "__main__":
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
 
-    wandb.agent(sweep_id, function=main, count=100) 
+    #wandb.agent(sweep_id, function=main, count=100)
 
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print("Device is : " , device) 
-        
+    print("Device is : " , device)
 
-    #main(args, device)
+
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
 
