@@ -589,6 +589,14 @@ def log_metrics(args, metrics):
     wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
     wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
     mets_array = np.array(metrics)
+    dims = mets_array.shape
+    print("Metrics array shape is : ", dims)
+    mets_splits = np.split(mets_array, 16, axis=0)
+    print("Metrics array split shape is : ", mets_splits[0].shape)
+
+
+
+
     for i in range(mets_array.shape[0]):
         wandb.log({"loss_tot": mets_array[i,0],
                    "loss_mse": mets_array[i,1],
