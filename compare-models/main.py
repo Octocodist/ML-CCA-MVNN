@@ -49,12 +49,12 @@ def init_parser():
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=3, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("--epochs", help="number of epochs to train", default=1)
+    parser.add_argument("--epochs", help="number of epochs to train", default=2)
     parser.add_argument("--batch_size", help="batch size to use", default=32)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -591,14 +591,24 @@ def log_metrics(args, metrics):
     mets_array = np.array(metrics)
     dims = mets_array.shape
     print("Metrics array shape is : ", dims)
-    mets_splits = np.split(mets_array, 16, axis=0)
+    mets_splits = np.split(mets_array, 16, axis=1)
     print("Metrics array split shape is : ", mets_splits[0].shape)
+    print("loss_tot is : " , np.mean(np.split(mets_splits[0], args.num_seeds, axis = 0), axis = 0))
+    print("Epoch is : " , np.split(mets_splits[15], args.num_seeds, axis = 0))
 
+    loss_tot = np.mean(np.split(mets_splits[0], args.num_seeds, axis = 0), axis = 1)
+    epochs_log = np.split(mets_splits[15], args.num_seeds, axis = 0)
+    print("len epochs is : " , len(epochs_log), len(epochs_log[0]))
+    print("len loss_tot  is : " , len(loss_tot))
 
+    for index in range(len(loss_tot)):
+        
+        wandb.log({"loss_tot": loss_tot[index].item(),
+                 "Epoch": epochs_log[index].item(),
+                })
 
-
-    for i in range(mets_array.shape[0]):
-        wandb.log({"loss_tot": mets_array[i,0],
+    '''
+    wandb.log({"loss_tot": mets_array[i,0],
                    "loss_mse": mets_array[i,1],
                    "loss_mae": mets_array[i,2],
                    "loss_evar": mets_array[i,3],
@@ -614,6 +624,7 @@ def log_metrics(args, metrics):
                    "kendall_tau_p_val": mets_array[i,13],
                    "Batch_num": mets_array[i,14],
                    "Epoch": mets_array[i,15]})
+    '''             
 def main(args=None):
 
     print("--Starting main--")
@@ -667,7 +678,7 @@ def main(args=None):
         ### log metrics ###
         log_metrics(args, metrics)
 
-
+        '''
             if args.model == "CERT":
                 cumm_batch = 0
                 cumm_epoch = 0
@@ -690,6 +701,7 @@ def main(args=None):
                             mono_flag = True
             else:
                 print("Model not implemented yet")
+        '''
     wandb.finish()
 
 if __name__ == "__main__":
