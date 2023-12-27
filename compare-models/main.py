@@ -405,7 +405,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
     # this is only relevant for CERT where we add previous batch iterations
     batch_num = cumm_batch 
     epoch_num = cumm_epoch
-
+    seed_metrics = []
     for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
@@ -439,7 +439,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
 
 
             # TODO add this to an array and log it
-            metrics.append([loss_tot.item(),
+            seed_metrics.append([loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -454,7 +454,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        batch_num,
-                       epoch_num] )
+                       epoch_num])
             """wandb.log({"loss": loss_tot.item(),
                        "loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        "loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -538,9 +538,10 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                    "test_kendall_tau_p_val": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1]})
     print("End Testing")
     """
+
+    metrics.append(seed_metrics)
     if args.model == "CERT":
         return model, batch_num, epoch_num 
-
     return model, metrics
 
 #TODO Work on defining parameters smoothly
@@ -588,10 +589,15 @@ def log_metrics(args, metrics):
     wandb.define_metric("val_loss_mpl", step_metric="Batch_num")
     wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
     wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
-    mets_array = np.array(metrics)
+    #mets_array = np.array(metrics)
+
+    mets_array = numpy.array([numpy.array(xi) for xi in metrics]
     dims = mets_array.shape
+
+
+
     print("Metrics array shape is : ", dims)
-    mets_splits = np.split(mets_array, 16, axis=1)
+    #mets_splits = np.split(mets_array, 16, axis=1)
     print("Metrics array split shape is : ", mets_splits[0].shape)
     print("loss_tot is : " , np.mean(np.split(mets_splits[0], args.num_seeds, axis = 0), axis = 0))
     print("Epoch is : " , np.split(mets_splits[15], args.num_seeds, axis = 0))
@@ -601,9 +607,11 @@ def log_metrics(args, metrics):
     print("len epochs is : " , len(epochs_log), len(epochs_log[0]))
     print("len loss_tot  is : " , len(loss_tot))
 
+
+
     for index in range(len(loss_tot)):
         
-        wandb.log({"loss_tot": loss_tot[index].item(),
+        #wandb.log({"loss_tot": loss_tot[index].item(),
                  "Epoch": epochs_log[index].item(),
                 })
 
