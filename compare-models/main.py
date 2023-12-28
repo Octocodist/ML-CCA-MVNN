@@ -49,13 +49,13 @@ def init_parser():
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=3, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("--epochs", help="number of epochs to train", default=2)
-    parser.add_argument("--batch_size", help="batch size to use", default=32)
+    parser.add_argument("--epochs", help="number of epochs to train", default=200)
+    parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
@@ -378,7 +378,7 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0):
+def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100):
     print("--Starting Training--")
     train_shape = train[0][0].shape[0]
     # metrics for regression
@@ -405,7 +405,9 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
     # this is only relevant for CERT where we add previous batch iterations
     batch_num = cumm_batch 
     epoch_num = cumm_epoch
-    seed_metrics = []
+    seed_metrics_train = []
+    seed_metrics_val = []
+    seed_metrics_test = []
     for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
@@ -439,7 +441,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
 
 
             # TODO add this to an array and log it
-            seed_metrics.append([loss_tot.item(),
+            seed_metrics_train.append([loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -454,23 +456,8 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        batch_num,
-                       epoch_num])
-            """wandb.log({"loss": loss_tot.item(),
-                       "loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       "loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       "loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_median_absolute_err": loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_r2": loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_max_err": loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       "kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       "Batch_num":  batch_num,
-                       "Epoch":  epoch_num })"""
+                       epoch_num, 
+                       1])
 
         ### Validation ###
         print("START validation")
@@ -481,8 +468,25 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
-            print("Val loss is : " ,val_loss.item())
+            #print("Val loss is : " ,val_loss.item())
 
+            seed_metrics_val.append([loss_tot.item(),
+                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       batch_num,
+                       epoch_num, 
+                       2])
             """
             wandb.log({"val_loss": val_loss.item(),
                        "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -502,7 +506,6 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
                        "Epoch":  epoch_num})
             """
         print("END validation")
-    """
     print("Start Testing")
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=True)
@@ -513,7 +516,24 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
         test_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         print("test loss is : ", test_loss.item())
-
+        seed_metrics_test.append([loss_tot.item(),
+                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       batch_num,
+                       epoch_num, 
+                       3])
+        """
         wandb.log({"test_loss": test_loss.item(),
                    "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
                    "test_loss_mse": loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
@@ -539,10 +559,12 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
     print("End Testing")
     """
 
-    metrics.append(seed_metrics)
+    metrics[0].append(seed_metrics_train)
+    metrics[1].append(seed_metrics_val)
+    metrics[2].append(seed_metrics_test)
     if args.model == "CERT":
         return model, batch_num, epoch_num 
-    return model, metrics
+    return model, (train_metrics,val_metrics,test_metrics)
 
 #TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
@@ -591,48 +613,70 @@ def log_metrics(args, metrics):
     wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
     #mets_array = np.array(metrics)
 
-    mets_array = numpy.array([numpy.array(xi) for xi in metrics]
-    dims = mets_array.shape
+    
+    mets_train = numpy.array([numpy.array(xi) for xi in metrics[0]])
+    mets_val = numpy.array([numpy.array(xi) for xi in metrics[1]])
+    mets_test = numpy.array([numpy.array(xi) for xi in metrics[2]])
+    dims_train = mets_train.shape
+    dims_val = mets_val.shape
+    dims_test = mets_test.shape
 
+    mean_train = np.mean(mets_train ,axis= 0) 
+    mean_val = np.mean(mets_val ,axis= 0) 
+    mean_test = np.mean(mets_test ,axis= 0) 
 
+    for i in range(dims_train[1]):
+        wandb.log({"loss_tot": mean_train[i,0],
+                   "loss_mse": mean_train[i,1],
+                   "loss_mae": mean_train[i,2],
+                   "loss_evar": mean_train[i,3],
+                   "loss_medabs": mean_train[i,4],
+                   "loss_r2": mean_train[i,5],
+                   "loss_maxerr": mean_train[i,6],
+                   "loss_mape": mean_train[i,7],
+                   "loss_d2tw": mean_train[i,8],
+                   "loss_mpl": mean_train[i,9],
+                   "loss_d2pl": mean_train[i,10],
+                   "loss_d2abserr": mean_train[i,11],
+                   "kendall_tau_statistics": mean_train[i,12],
+                   "kendall_tau_p_val": mean_train[i,13],
+                   "Batch_num": mean_train[i,14],
+                   "Epoch": mean_train[i,15]})
+    for i in range(dims_val[1]):
+        wandb.log({"val_loss_tot": mean_val[i,0],
+                   "val_loss_mse": mean_val[i,1],
+                   "val_loss_mae": mean_val[i,2],
+                   "val_loss_evar": mean_val[i,3],
+                   "val_loss_medabs": mean_val[i,4],
+                   "val_loss_r2": mean_val[i,5],
+                   "val_loss_maxerr": mean_val[i,6],
+                   "val_loss_mape": mean_val[i,7],
+                   "val_loss_d2tw": mean_val[i,8],
+                   "val_loss_mpl": mean_val[i,9],
+                   "val_loss_d2pl": mean_val[i,10],
+                   "val_loss_d2abserr": mean_val[i,11],
+                   "val_kendall_tau_statistics": mean_val[i,12],
+                   "val_kendall_tau_p_val": mean_val[i,13],
+                   "Batch_num": mean_val[i,14],
+                   "Epoch": mean_val[i,15]})
+    for i in range(dims_test[1]):
+        wandb.log({"test_loss_tot": mean_test[i,0],
+                   "test_loss_mse": mean_test[i,1],
+                   "test_loss_mae": mean_test[i,2],
+                   "test_loss_evar": mean_test[i,3],
+                   "test_loss_medabs": mean_test[i,4],
+                   "test_loss_r2": mean_test[i,5],
+                   "test_loss_maxerr": mean_test[i,6],
+                   "test_loss_mape": mean_test[i,7],
+                   "test_loss_d2tw": mean_test[i,8],
+                   "test_loss_mpl": mean_test[i,9],
+                   "test_loss_d2pl": mean_test[i,10],
+                   "test_loss_d2abserr": mean_test[i,11],
+                   "test_kendall_tau_statistics": mean_test[i,12],
+                   "test_kendall_tau_p_val": mean_test[i,13],
+                   "Batch_num": mean_test[i,14],
+                   "Epoch": mean_test[i,15]})
 
-    print("Metrics array shape is : ", dims)
-    #mets_splits = np.split(mets_array, 16, axis=1)
-    print("Metrics array split shape is : ", mets_splits[0].shape)
-    print("loss_tot is : " , np.mean(np.split(mets_splits[0], args.num_seeds, axis = 0), axis = 0))
-    print("Epoch is : " , np.split(mets_splits[15], args.num_seeds, axis = 0))
-
-    loss_tot = np.mean(np.split(mets_splits[0], args.num_seeds, axis = 0), axis = 1)
-    epochs_log = np.split(mets_splits[15], args.num_seeds, axis = 0)
-    print("len epochs is : " , len(epochs_log), len(epochs_log[0]))
-    print("len loss_tot  is : " , len(loss_tot))
-
-
-
-    for index in range(len(loss_tot)):
-        
-        #wandb.log({"loss_tot": loss_tot[index].item(),
-                 "Epoch": epochs_log[index].item(),
-                })
-
-    '''
-    wandb.log({"loss_tot": mets_array[i,0],
-                   "loss_mse": mets_array[i,1],
-                   "loss_mae": mets_array[i,2],
-                   "loss_evar": mets_array[i,3],
-                   "loss_medabs": mets_array[i,4],
-                   "loss_r2": mets_array[i,5],
-                   "loss_maxerr": mets_array[i,6],
-                   "loss_mape": mets_array[i,7],
-                   "loss_d2tw": mets_array[i,8],
-                   "loss_mpl": mets_array[i,9],
-                   "loss_d2pl": mets_array[i,10],
-                   "loss_d2abserr": mets_array[i,11],
-                   "kendall_tau_statistics": mets_array[i,12],
-                   "kendall_tau_p_val": mets_array[i,13],
-                   "Batch_num": mets_array[i,14],
-                   "Epoch": mets_array[i,15]})
-    '''             
 def main(args=None):
 
     print("--Starting main--")
@@ -658,7 +702,7 @@ def main(args=None):
     if args.model == "MVNN":
         args.use_dummy = False
 
-    metrics = []
+    metrics = [[],[],[]]
     bidder_ids = [0]
     for bidder in bidder_ids:
         for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
@@ -680,7 +724,7 @@ def main(args=None):
             print("--- Loaded model successfully ---")
 
             ### train model ###
-            model, metrics = train_model(args, model, train, val, metrics, bidder_id= bidder)
+            model, metrics = train_model(args, model, train, val, metrics, bidder_id= bidder, seed=seed)
             print("--- Trained model successfully ---")
 
         ### log metrics ###
@@ -718,8 +762,8 @@ if __name__ == "__main__":
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    #os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
-    #os.chdir('/cluster/scratch/filles')
+    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    os.chdir('/cluster/scratch/filles')
     print(os.getcwd(), " : is the current working directory")
 
 
@@ -739,9 +783,9 @@ if __name__ == "__main__":
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             }
         }
-    #sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
 
-    #wandb.agent(sweep_id, function=main, count=100)
+    wandb.agent(sweep_id, function=main, count=100)
 
 
 
