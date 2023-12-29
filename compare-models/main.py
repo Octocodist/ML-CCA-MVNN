@@ -54,7 +54,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("--epochs", help="number of epochs to train", default=200)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -67,6 +67,7 @@ def init_parser():
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
+    parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
     #parser.add_argument("--trainable_ts", help="trainable ts", default=True)
@@ -128,6 +129,14 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
     y_val_tensor = torch.FloatTensor(y_val).float()
     X_test_tensor = torch.FloatTensor(X_test).float()
     y_test_tensor = torch.FloatTensor(y_test).float()
+    
+    if args.scale: 
+        max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
+        print(max_val, " is max_val " ) 
+        torch.div(y_train_tensor, max_val)
+        torch.div(y_val_tensor, max_val)
+        torch.div(y_test_tensor, max_val)
+
 
     #create datasets for dataloader
     return TensorDataset(X_train_tensor, y_train_tensor), TensorDataset(X_val_tensor, y_val_tensor),TensorDataset(X_test_tensor, y_test_tensor)
@@ -378,7 +387,7 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100):
+def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100):
     print("--Starting Training--")
     train_shape = train[0][0].shape[0]
     # metrics for regression
@@ -508,7 +517,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
         print("END validation")
     print("Start Testing")
         ### Test ###
-    test_loader = torch.utils.data.DataLoader(test, batch_size=batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
     for batch in test_loader:
         if args.model == "MVNN":
             predictions = model.forward(batch[0])
@@ -564,7 +573,7 @@ def train_model(args, model, train, val, metrics,  bidder_id=1, cumm_batch=0, cu
     metrics[2].append(seed_metrics_test)
     if args.model == "CERT":
         return model, batch_num, epoch_num 
-    return model, (train_metrics,val_metrics,test_metrics)
+    return model, metrics 
 
 #TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
@@ -640,7 +649,7 @@ def log_metrics(args, metrics):
                    "loss_d2abserr": mean_train[i,11],
                    "kendall_tau_statistics": mean_train[i,12],
                    "kendall_tau_p_val": mean_train[i,13],
-                   "Batch_num": mean_train[i,14],
+                   "Batch_num_train": mean_train[i,14],
                    "Epoch": mean_train[i,15]})
     for i in range(dims_val[1]):
         wandb.log({"val_loss_tot": mean_val[i,0],
@@ -657,7 +666,7 @@ def log_metrics(args, metrics):
                    "val_loss_d2abserr": mean_val[i,11],
                    "val_kendall_tau_statistics": mean_val[i,12],
                    "val_kendall_tau_p_val": mean_val[i,13],
-                   "Batch_num": mean_val[i,14],
+                   "Batch_num_val": mean_val[i,14],
                    "Epoch": mean_val[i,15]})
     for i in range(dims_test[1]):
         wandb.log({"test_loss_tot": mean_test[i,0],
@@ -683,17 +692,20 @@ def main(args=None):
     parser = init_parser()
     args = parser.parse_args()
 
-    print("####################################")
-    print("Testing passing of OG vars : ", args.model, "\n and args are :", args )
-    print("####################################")
+    #print("####################################")
+    #print("Testing passing of OG vars : ", args.model, "\n and args are :", args )
+    #print("####################################")
 
     print("We are training over:", args.num_seeds, " seeds")
-    wandb.init(project="MVNN-Sweeps", group="Initial_runs")
+    group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
+    run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
+    wandb.init(project="MVNN",id=run_id, group=group_id , reinit=True, dir="cluster/scratch/filles/wandb/" )
     #wandb.config.update(cert_parameters, allow_val_change=True)
     #wandb.config.update(mvnn_parameters, allow_val_change=True)
     #wandb.config.update(umnn_parameters, allow_val_change=True)
     #wandb.config.update(args, allow_val_change=True)
-    #args.__dict__.update(wandb.config)
+    args.__dict__.update(wandb.config)
+    wandb.config.update(args, allow_val_change=True)
     
     print("####################################")
     print("Testing passing of new args from wandb: ", args.model, "\n and config is : ", wandb.config, "\n and the new args are: ", args)
@@ -703,12 +715,9 @@ def main(args=None):
         args.use_dummy = False
 
     metrics = [[],[],[]]
-    bidder_ids = [0]
+    bidder_ids = [args.bidder_id]
     for bidder in bidder_ids:
         for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
-            group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
-            run_id = group_id + str(seed) + str(np.random.randint(2000))
-            wandb.init(project="MVNN-Runs",id=run_id, group = group_id , config={"n_run": num}, reinit=True)
             wandb.log({"model": args.model, "dataset": args.dataset})
 
 
@@ -724,7 +733,7 @@ def main(args=None):
             print("--- Loaded model successfully ---")
 
             ### train model ###
-            model, metrics = train_model(args, model, train, val, metrics, bidder_id= bidder, seed=seed)
+            model, metrics = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed)
             print("--- Trained model successfully ---")
 
         ### log metrics ###
@@ -762,10 +771,14 @@ if __name__ == "__main__":
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
-    os.chdir('/cluster/scratch/filles')
+    #os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    #os.chdir('/cluster/scratch/filles')
     print(os.getcwd(), " : is the current working directory")
-
+ 
+    parser = init_parser()
+    args = parser.parse_args()
+    group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
+    os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
 
     #wandb.init(project="MVNN-Runs")
     #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
@@ -778,12 +791,13 @@ if __name__ == "__main__":
             "num_hidden_layers": { "values" : [1,2,3]},
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
-            "model": {"values":["UMNN"]},
-            "dataset": {"values":["gsvm"]}, 
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "model": {"values":["MVNN"]},
+            #"dataset": {"values":["lsvm"]}, 
+            "dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "bidder_id":{ "values": [0,2,5]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN-Sweeps")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="MVNN")
 
     wandb.agent(sweep_id, function=main, count=100)
 
@@ -792,8 +806,8 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Device is : " , device)
 
-
+    print("Testing classic Main") 
     parser = init_parser()
-    args = parser.parse_args()
-    main(args)
+    #args = parser.parse_args()
+    #main(args)
 
