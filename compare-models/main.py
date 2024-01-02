@@ -46,7 +46,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='UMNN')
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
@@ -97,8 +97,6 @@ mvnn_parameters = {'num_hidden_layers': 1,
                    }
 
 #umnn_parameters = {"mon_in": 1, "cond_in": 10, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
-umnn_parameters = {"num_embedding_layers": 2, "num_embedding_hiddens": 20, "num_main_hidden_layers" = 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 50 }
-
 cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
 
 
@@ -149,19 +147,21 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
 class EmbeddingNet(nn.Module):
-    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, initial_steps=10, device="cpu"):
+    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
         super(EmbeddingNet, self).__init__()
         ## Attention this dynamic setting of embedding was modified from the original code
         self.layers = []
         self.layers = [nn.Linear(in_embedding, num_embedding_hiddens), nn.ReLU()]
         for i in range (num_embedding_layers):
-            self.layers.append(nn.Linear(num_embedding_hiddens, num_embedding_hiddens),nn.ReLU())
-        self.layers.append(nn.Linear(num_embedding_hiddens, out_embedding), nn.ReLU())
+            self.layers.append(nn.Linear(num_embedding_hiddens, num_embedding_hiddens))
+            self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(num_embedding_hiddens, out_embedding))
+        self.layers.append(nn.ReLU())
         self.embedding_net = nn.Sequential(*self.layers).to(device)
         self.umnn_hidden = []
         for i in range(num_main_hidden_layers):
             self.umnn_hidden.append(num_main_hidden_nodes)
-        self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=self.umnn_hidden, n_out=1, nb_steps= initial_steps, device= device)
+        self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=self.umnn_hidden, n_out=1, nb_steps= nb_steps, device= device)
         #self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
         #                                   nn.Linear(200, 200), nn.ReLU(),
         #                                   nn.Linear(200, out_embedding), nn.ReLU()).to(device)
@@ -377,8 +377,10 @@ def get_mvnn(args, input_shape,n_dummy=1):
                          )
     return model
 
+umnn_parameters = {"num_embedding_layers": 1, "num_embedding_hiddens": 10, "num_main_hidden_layers" : 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 10 }
+
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
-    model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device="cpu", num_embedding_layers=umnn_parameters.num_embedding_layers, num_embedding_hiddens=umnn_parameters.num_embedding_hiddens , num_main_hidden_layers=umnn_parameters.num_main_hidden_layers, num_main_hidden_nodes=umnn_parameters.num_main_hidden_nodes, intial_steps=umnn_parameters.nb_steps, device=device)
+    model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device=device, num_embedding_layers=umnn_parameters['num_embedding_layers'], num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'], num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'], num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'], nb_steps=umnn_parameters['nb_steps'])
     return model
 def get_cert(args, train_shape, cert_parameters):
     if args.use_dummy:
@@ -398,7 +400,7 @@ def get_cert(args, train_shape, cert_parameters):
 # log metrics
 # store model
 # generate plots -> separate File
-def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100):
+def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0]):
     print("--Starting Training--")
     train_shape = train[0][0].shape[0]
     # metrics for regression
@@ -423,14 +425,15 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
     wandb.watch(model, log="all")
     # this is only relevant for CERT where we add previous batch iterations
-    batch_num = cumm_batch 
-    epoch_num = cumm_epoch
+    batch_num = infos[0] 
+    epoch_num = infos[1]
     seed_metrics_train = []
     seed_metrics_val = []
     seed_metrics_test = []
     for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
+            #batch = batch.to(device)
             batch_num +=1
 
             optimizer.zero_grad()
@@ -445,7 +448,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
             elif args.model == 'UMNN':
-                model.set_steps(int(torch.randint(10,30, [1])))
+                model.set_steps(int(torch.randint(1,10, [1])))
 
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
@@ -482,6 +485,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
         for batch in val_loader:
+            #batch = batch.to(device)
             if args.model == "MVNN" or args.model == "UMNN":
                 predictions = model.forward(batch[0])
             else :
@@ -529,6 +533,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
     for batch in test_loader:
+        #batch = batch.to(device)
         if args.model == "MVNN":
             predictions = model.forward(batch[0])
         else:
@@ -581,9 +586,9 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     metrics[0].append(seed_metrics_train)
     metrics[1].append(seed_metrics_val)
     metrics[2].append(seed_metrics_test)
-    if args.model == "CERT":
-        return model, batch_num, epoch_num 
-    return model, metrics 
+    infos[0] = batch_num
+    infos[1] = epochs
+    return model, metrics, infos
 
 #TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
@@ -710,7 +715,7 @@ def main(args=None):
     ## initialise wandb 
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
-    wandb.init(project="UMNN",id=run_id, group=group_id , reinit=True)
+    wandb.init(project=str(args.model),id=run_id, group=group_id , reinit=True)
 
     # log  parameters 
     if args.model == "MVNN": 
@@ -733,6 +738,7 @@ def main(args=None):
 
     # define metrics 
     metrics = [[],[],[]]
+    infos = [0,0] # cumulative batch and epoch  
 
 
     # TODO remove bidder id loop 
@@ -746,45 +752,38 @@ def main(args=None):
             train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
             train_shape = train[0][0].shape[0]
 
-            print(train_shape, " is the train shape and seed is ", seed)
-            print("--- Loaded dataset successfully ---")
+            #print(train_shape, " is the train shape and seed is ", seed)
+            #print("--- Loaded dataset successfully ---")
 
             ### define model ###
             model = get_model(args, train_shape)
             #print("--- Loaded model successfully ---")
 
+
             ### train model ###
-            model, metrics = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed)
-            #print("--- Trained model successfully ---")
+            model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed, infos=infos)
+            print("--- Trained model successfully ---")
 
-        ### log metrics ###
-        log_metrics(args, metrics)
-
-    
-        '''
             if args.model == "CERT":
-                cumm_batch = 0
-                cumm_epoch = 0
-                mono_flag = False
+                n_dummy = 1
+                mono_flag = certify_neural_network(model, train_shape-n_dummy)
                 while not mono_flag:
-                    model, cumm_batch,cumm_epoch  = train_model(args, model, train, train_shape, val, test,cumm_batch= cumm_batch, cumm_epoch= cumm_epoch )
-                    # certify first layer
-                    print("Certifying network!")
+                    model, metrics, infos = train_model(args, model, train, val, test, metrics, bidder_id=bidder, seed=seed, infos=infos)
                     assert(args.use_dummy)
-                    n_dummy = 1
-                    print("Start Certification")
                     mono_flag = certify_neural_network(model, train_shape-n_dummy)
                     if not mono_flag:
                         model.lam *= 10
                         print("Network not monotonic, increasing regularization strength to ", model.lam)
-                        wandb.log({"lam":model.lam})
+                        wandb.log({"lam":model.lam, "train_batch": infos[0]})
 
                         if model.lam == 1000:
                             print("Exiting because of too many trys in CERT")
                             mono_flag = True
-            else:
-                print("Model not implemented yet")
-        '''
+                
+        ### log metrics ###
+        log_metrics(args, metrics)
+
+    
     wandb.finish()
 
 if __name__ == "__main__":
@@ -813,25 +812,26 @@ if __name__ == "__main__":
             "num_hidden_layers": { "values" : [1,2,3]},
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
-            "model": {"values":["UMNN"]},
+            "model": {"values":["CERT"]},
+            #"model": {"values":["UMNN"]},
             #"model": {"values":["MVNN"]},
             "dataset": {"values":["lsvm"]}, 
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             "bidder_id":{ "values": [0,2,5]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="UMNN")
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="UMNN")
 
-    wandb.agent(sweep_id, function=main, count=100)
+    #wandb.agent(sweep_id, function=main, count=100)
 
 
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
-    #print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    print("Testing classic Main") 
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
 
