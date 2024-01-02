@@ -96,7 +96,8 @@ mvnn_parameters = {'num_hidden_layers': 1,
                    'init_little_const': 0.1
                    }
 
-umnn_parameters = {"mon_in": 1, "cond_in": 10, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
+#umnn_parameters = {"mon_in": 1, "cond_in": 10, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
+umnn_parameters = {"num_embedding_layers": 2, "num_embedding_hiddens": 20, "num_main_hidden_layers" = 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 50 }
 
 cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
 
@@ -148,13 +149,23 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
 class EmbeddingNet(nn.Module):
-    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_hidden_nodes=200):
+    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, initial_steps=10, device="cpu"):
         super(EmbeddingNet, self).__init__()
-        self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
-                                           nn.Linear(200, 200), nn.ReLU(),
-                                           nn.Linear(200, out_embedding), nn.ReLU()).to(device)
-
-        self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=[100, 100, 100], n_out=1, nb_steps= 300, device= device)
+        ## Attention this dynamic setting of embedding was modified from the original code
+        self.layers = []
+        self.layers = [nn.Linear(in_embedding, num_embedding_hiddens), nn.ReLU()]
+        for i in range (num_embedding_layers):
+            self.layers.append(nn.Linear(num_embedding_hiddens, num_embedding_hiddens),nn.ReLU())
+        self.layers.append(nn.Linear(num_embedding_hiddens, out_embedding), nn.ReLU())
+        self.embedding_net = nn.Sequential(*self.layers).to(device)
+        self.umnn_hidden = []
+        for i in range(num_main_hidden_layers):
+            self.umnn_hidden.append(num_main_hidden_nodes)
+        self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=self.umnn_hidden, n_out=1, nb_steps= initial_steps, device= device)
+        #self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
+        #                                   nn.Linear(200, 200), nn.ReLU(),
+        #                                   nn.Linear(200, out_embedding), nn.ReLU()).to(device)
+        #self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=[100, 100, 100], n_out=1, nb_steps= 300, device= device)
 
     def set_steps(self, nb_steps):
         self.umnn.set_steps(nb_steps)
@@ -366,8 +377,8 @@ def get_mvnn(args, input_shape,n_dummy=1):
                          )
     return model
 
-def get_umnn(umnn_parameters, input_shape, n_dummy=1, n_items=18):
-    model = EmbeddingNet(in_embedding =input_shape, in_main=input_shape, out_embedding=input_shape, device="cpu")
+def get_umnn(umnn_parameters, input_shape, device="cpu"):
+    model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device="cpu", num_embedding_layers=umnn_parameters.num_embedding_layers, num_embedding_hiddens=umnn_parameters.num_embedding_hiddens , num_main_hidden_layers=umnn_parameters.num_main_hidden_layers, num_main_hidden_nodes=umnn_parameters.num_main_hidden_nodes, intial_steps=umnn_parameters.nb_steps, device=device)
     return model
 def get_cert(args, train_shape, cert_parameters):
     if args.use_dummy:
