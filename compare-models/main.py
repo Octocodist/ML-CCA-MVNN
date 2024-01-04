@@ -47,7 +47,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -519,8 +519,12 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
     wandb.watch(model, log="all")
     # this is only relevant for CERT where we add previous batch iterations
-    batch_num = infos[0] 
-    epoch_num = infos[1]
+    batch_num = 0 
+    epoch_num = 0
+    if infos[2] == 1:
+        batch_num = infos[0] 
+        epoch_num = infos[1]
+        
     seed_metrics_train = []
     seed_metrics_val = []
     seed_metrics_test = []
@@ -833,7 +837,7 @@ def main(args=None):
 
     # define metrics 
     metrics = [[],[],[]]
-    infos = [0,0] # cumulative batch and epoch  
+    infos = [0,0,0] # cumulative batch and epoch last is bool if CERT is extended  
 
 
     # TODO remove bidder id loop 
@@ -896,8 +900,9 @@ if __name__ == "__main__":
     parser = init_parser()
     args = parser.parse_args()
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
-    #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
+    os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
+    #MODEL = "MVNN"
+    MODEL = "CERT"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -912,20 +917,20 @@ if __name__ == "__main__":
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["lsvm"]}, 
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
-            "bidder_id":{ "values": [0]},
+            #"dataset": {"values":["lsvm"]}, 
+            "dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "bidder_id":{ "values": [0, 1, 2]},
             }
         }
     sweep_id = wandb.sweep(sweep=sweep_config, project=str(MODEL))
-    wandb.agent(sweep_id, function=main, count=100)
+    wandb.agent(sweep_id, function=main, count=200)
 
 
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
-    print("Testing classic Main") 
+    #print("Testing classic Main") 
     #parser = init_parser()
     #args = parser.parse_args()
     #main(args)
