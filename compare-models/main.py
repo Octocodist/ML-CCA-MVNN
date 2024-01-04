@@ -36,6 +36,7 @@ import argparse
 from torch.utils.data import DataLoader
 from certify import *
 #from config import cert_parameters, mvnn_parameters, umnn_parameters
+from mvnns.mvnn_generic_mixed import MVNN_GENERIC_MIXED
 
 
 
@@ -67,6 +68,7 @@ def init_parser():
     parser.add_argument("--layer_type", help="layer type", default="MVNNLayerReLUProjected")
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
+    parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
@@ -95,6 +97,60 @@ mvnn_parameters = {'num_hidden_layers': 1,
                    'init_b': 0.05,
                    'init_bias': 0.05,
                    'init_little_const': 0.1
+                   }a
+"""
+final_input_dim: int,
+                 final_num_hidden_layers: int,
+                 final_num_hidden_units: int,
+                 final_dropout_prob: float,
+                 final_layer_type: str,
+                 final_target_max: float,
+                 final_init_method: str,
+                 final_random_ts: tuple,
+                 final_trainable_ts: bool,
+                 final_init_E: float,
+                 final_init_Var: float,
+                 final_init_b: float,
+                 final_init_bias: float,
+                 final_init_little_const: float,
+                 final_lin_skip_connection: bool,
+                 final_capacity_generic_goods: np.array,
+                 final_output_inner_mvnn: int,
+                 """
+mixed_mvnn_parameters = {'num_hidden_layers': 1,
+                   'num_hidden_units': 20,
+                   'layer_type': 'MVNNLayerReLUProjected',
+                   'target_max': 1,
+                   'lin_skip_connection': 1,
+                   'dropout_prob': 0,
+                   'init_method':'custom',
+                   'random_ts': [0,1],
+                   'trainable_ts': True,
+                   'init_E': 1,
+                   'init_Var': 0.09,
+                   'init_b': 0.05,
+                   'init_bias': 0.05,
+                   'init_little_const': 0.1, 
+                   'non_mono_num_hidden_layers': 1,
+                   'non_mono_num_hidden_units': 20,
+                   'non_mono_output_dim': 20, 
+                   'non_mono_lin_skip_connection': 0, 
+                   'non_mono_dropout_prob': 0,
+                   'final_num_hidden_layers': 1,
+                   'final_num_hidden_units': 20,
+                   'final_dropout_prob': 0,
+                   'final_layer_type': 'MVNNLayerReLUProjected',
+                   'final_target_max': 1,
+                   'final_init_method': 'custom',
+                   'final_random_ts': [0, 1],
+                   'final_trainable_ts': True,
+                   'final_init_E': 1,
+                   'final_init_Var': 0.09,
+                   'final_init_b': 0.05,
+                   'final_init_bias': 0.05,
+                   'final_init_little_const': 0.1,
+                   'final_lin_skip_connection': 1,
+                   'final_output_inner_mvnn': 20,
                    }
 
 #umnn_parameters = {"mon_in": 1, "cond_in": 10, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
@@ -374,27 +430,43 @@ def get_mvnn(args, input_shape,n_dummy=1):
                          init_b=mvnn_parameters['init_b'],
                          init_bias=mvnn_parameters['init_bias'],
                          init_little_const=mvnn_parameters['init_little_const'],
-                         capacity_generic_goods=capacity_generic_goods
+                         capacity_generic_goods=capacity_generic_goods,
+                         output_size=1,
                          )
     return model
-def get_mixed_mvnn(args, input_shape_mono,input_shape_u=1):
-    capacity_generic_goods = np.array([1 for _ in range(input_shape)])
+def get_mixed_mvnn(args, input_shape_mono,input_shape_non_mono):
+    capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
     mono_input = MVNN_GENERIC(input_dim=input_shape_mono,
-                         num_hidden_layers=mvnn_parameters['num_hidden_layers'],
-                         num_hidden_units=mvnn_parameters['num_hidden_units'],
-                         layer_type=mvnn_parameters['layer_type'],
-                         target_max=mvnn_parameters['target_max'],
+                         num_hidden_layers=mixed_mvnn_parameters['num_hidden_layers'],
+                         num_hidden_units=mixed_mvnn_parameters['num_hidden_units'],
+                         layer_type=mixed_mvnn_parameters['layer_type'],
+                         target_max=mixed_mvnn_parameters['target_max'],
                          lin_skip_connection=args.lin_skip_connection,
-                         dropout_prob=mvnn_parameters['dropout_prob'],
-                         init_method=mvnn_parameters['init_method'],
-                         random_ts=mvnn_parameters['random_ts'],
-                         trainable_ts=mvnn_parameters['trainable_ts'],
-                         init_E=mvnn_parameters['init_E'],
-                         init_Var=mvnn_parameters['init_Var'],
-                         init_b=mvnn_parameters['init_b'],
-                         init_bias=mvnn_parameters['init_bias'],
-                         init_little_const=mvnn_parameters['init_little_const'],
-                         capacity_generic_goods=capacity_generic_goods
+                         dropout_prob=mixed_mvnn_parameters['dropout_prob'],
+                         init_method=mixed_mvnn_parameters['init_method'],
+                         random_ts=mixed_mvnn_parameters['random_ts'],
+                         trainable_ts=mixed_mvnn_parameters['trainable_ts'],
+                         init_E=mixed_mvnn_parameters['init_E'],
+                         init_Var=mixed_mvnn_parameters['init_Var'],
+                         init_b=mixed_mvnn_parameters['init_b'],
+                         init_bias=mixed_mvnn_parameters['init_bias'],
+                         init_little_const=mixed_mvnn_parameters['init_little_const'],
+                         capacity_generic_goods=capacity_generic_goods,
+                         final_num_hidden_layers=mixed_mvnn_parameters['num_hidden_layers'],
+                         final_num_hidden_units=mixed_mvnn_parameters['num_hidden_units'],
+                         final_layer_type=mixed_mvnn_parameters['layer_type'],
+                         final_target_max=mixed_mvnn_parameters['target_max'],
+                         final_lin_skip_connection=args.final_lin_skip_connection,
+                         final_dropout_prob=mixed_mvnn_parameters['dropout_prob'],
+                         final_init_method=mixed_mvnn_parameters['init_method'],
+                         final_random_ts=mixed_mvnn_parameters['random_ts'],
+                         final_trainable_ts=mixed_mvnn_parameters['trainable_ts'],
+                         final_init_E=mixed_mvnn_parameters['init_E'],
+                         final_init_Var=mixed_mvnn_parameters['init_Var'],
+                         final_init_b=mixed_mvnn_parameters['init_b'],
+                         final_init_bias=mixed_mvnn_parameters['init_bias'],
+                         final_init_little_const=mixed_mvnn_parameters['init_little_const'],
+                         final_capacity_generic_goods=capacity_generic_goods
                          )
                          
     return model
