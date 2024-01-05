@@ -36,7 +36,7 @@ import argparse
 from torch.utils.data import DataLoader
 from certify import *
 #from config import cert_parameters, mvnn_parameters, umnn_parameters
-from mvnns.mvnn_generic_mixed import MVNN_GENERIC_MIXED
+#from mvnns.mvnn_generic_mixed import MVNN_GENERIC_MIXED
 
 
 
@@ -47,7 +47,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT'], default='CERT')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='CERT')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -56,7 +56,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=200)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -97,7 +97,7 @@ mvnn_parameters = {'num_hidden_layers': 1,
                    'init_b': 0.05,
                    'init_bias': 0.05,
                    'init_little_const': 0.1
-                   }a
+                   }
 """
 final_input_dim: int,
                  final_num_hidden_layers: int,
@@ -863,11 +863,12 @@ def main(args=None):
             model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed, infos=infos)
             print("--- Trained model successfully ---")
 
+        log_metrics(args, metrics)
+        """
             if args.model == "CERT":
                 pass
                 #    n_dummy = 1
                 #mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                """
                 while not mono_flag:
                     model, metrics, infos = train_model(args, model, train, val, test, metrics, bidder_id=bidder, seed=seed, infos=infos)
                     assert(args.use_dummy)
@@ -882,7 +883,7 @@ def main(args=None):
                             mono_flag = True
                """ 
         ### log metrics ###
-        log_metrics(args, metrics)
+        #log_metrics(args, metrics)
 
     
     wandb.finish()
