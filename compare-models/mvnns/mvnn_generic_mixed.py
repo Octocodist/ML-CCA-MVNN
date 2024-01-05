@@ -3,8 +3,12 @@ import torch
 from torchinfo import summary
 import torch.nn as nn
 from mvnns.layers import *
+from mvnns.mvnn_generic import MVNN_GENERIC
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> a73a4e0ac45618d4ad9e61414f7311fa2a90a923
 class MVNN_GENERIC_MIXED(nn.Module):
 
     def __init__(self,
@@ -24,11 +28,102 @@ class MVNN_GENERIC_MIXED(nn.Module):
                  init_little_const: float,
                  lin_skip_connection: bool,
                  capacity_generic_goods: np.array,
+                 output_inner_mvnn: int,
+
+                 non_mono_input_dim : int,
+                 non_mono_num_hidden_layers : int,
+                 non_mono_num_hidden_units : int,
+                 non_mono_output_dim : float,
+                 non_mono_lin_skip_connection: bool,
+                 non_mono_dropout_prob: float,
+
+                 final_input_dim: int,
+                 final_num_hidden_layers: int,
+                 final_num_hidden_units: int,
+                 final_dropout_prob: float,
+                 final_layer_type: str,
+                 final_target_max: float,
+                 final_init_method: str,
+                 final_random_ts: tuple,
+                 final_trainable_ts: bool,
+                 final_init_E: float,
+                 final_init_Var: float,
+                 final_init_b: float,
+                 final_init_bias: float,
+                 final_init_little_const: float,
+                 final_lin_skip_connection: bool,
+                 final_capacity_generic_goods: np.array,
+                 final_output_inner_mvnn: int,
+
                  *args, **kwargs):
 
-        super(MVNN_GENERIC, self).__init__()
+        super(MVNN_GENERIC_MIXED, self).__init__()
 
+        self.mvnn_input = MVNN_GENERIC(input_dim,num_hidden_units,num_hidden_layers,dropout_prob,layer_type,target_max,init_method,random_ts,trainable_ts,init_E,init_Var,init_b,init_bias,init_little_const,lin_skip_connection,capacity_generic_goods, output_inner_mvnn)
+        self.intermediate = nn.Linear(output_inner_mvnn + non_mono_output_dim*2 ,final_input_dim,bias=True)
+        self.mvnn_final = MVNN_GENERIC(final_input_dim,final_num_hidden_units,final_num_hidden_layers,final_dropout_prob,final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
+        self.non_mono_layers = []
+
+        #initial layer
+        self.non_mono_layers.append(
+            nn.Linear(non_mono_input_dim,
+                      non_mono_num_hidden_units,
+                      bias=True
+                      )
+        )
+        self.non_mono_layers.append(nn.ReLU())
+
+        for _ in range(non_mono_num_hidden_layers):
+            self.non_mono_layers.append(
+                nn.Linear(non_mono_num_hidden_units,
+                         non_mono_num_hidden_units,
+                         bias=True
+                         )
+            self.non_mono_layers.append(nn.ReLU())
+            )
+        self.non_mono_list = torch.nn.ModuleList(self.non_mono_layers)
+        self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=non_mono_dropout_prob) for _ in range(len(self.non_mono_list))])
+
+        # final layer
+        self.non_mono_layers.append(
+            nn.Linear(non_mono_num_hidden_units,
+                      non_mono_output_dim,
+                      bias=True
+                      )
+        )
+        self.non_mono_layers.append(nn.ReLU())
+
+        self.non_mono_net = torch.nn.Sequential(*self.non_mono_list)
+
+        if non_mono_lin_skip_connection:
+            self.lin_skip_layer = nn.Linear(non_mono_input_dim,non_mono_output_dim,bias=False)
+
+        def forward(self, x_mono, x_non_mono):
+            x_mono = self.mvnn_input(x_mono)
+
+            if hasattr(self, 'non_mono_lin_skip_layer'):
+                x_in_non_mono = x_non_mono
+
+            # Non-Monotonic part
+            x_non_mono = self.non_mono_net(x_non_mono)
+            #for layer, dropout in zip(self.non_mono_layers, self.non_mono_dropouts):
+            #    x_non_mono = layer(x_non_mono)
+            #    x_non_mono = dropout(x_non_mono)
+
+            # Output layer
+            if hasattr(self, 'non_mono_lin_skip_layer'):
+                x_non_mono = self.output_activation_function(self.non_mono_output_layer(x_non_mono)) + self.lin_skip_layer(x_in_non_mono)
+            else:
+                x_non_mono = self.output_activation_function(self.output_layer(x_non_mono))
+            x_middle = torch.cat((x_mono,x_non_mono, -x_non_mono),dim=1)
+            x_middle = self.intermediate(x_middle)
+
+            x_final = self.mvnn_final(x_middle)
+            return x_final
+
+        """
         fc_layer = eval(layer_type)
+        
 
         self.output_activation_function = torch.nn.Identity()
         self._layer_type = layer_type
@@ -172,3 +267,4 @@ class MVNN_GENERIC_MIXED(nn.Module):
                 print(f'Values: {self.output_layer.bias.data}')
         for name, param in self.output_layer.named_parameters():
                 print(f'{name} requires_grad={param.requires_grad}')
+        """
