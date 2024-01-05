@@ -5,7 +5,7 @@ import torch.nn as nn
 from mvnns.layers import *
 
 
-class MVNN_GENERIC(nn.Module):
+class MVNN_GENERIC_MIXED(nn.Module):
 
     def __init__(self,
                  input_dim: int,
