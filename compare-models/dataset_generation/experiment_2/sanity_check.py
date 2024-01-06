@@ -26,7 +26,7 @@ y_train = train.iloc[:,-1].copy(deep=True)
 train = train.drop(columns = [51,52,53,54,56,57,58,59,180], axis = 1)
 
 # save pickle 
-with open(filepath+"blogfeedback_train.pkl","wb") as file:
+with open(filepath+"blog_train.pkl","wb") as file:
     pickle.dump([train, train_mono, y_train],file)
 
 
@@ -44,6 +44,6 @@ y_test = test.iloc[:,-1].copy(deep=True)
 test = test.drop(columns = [51,52,53,54,56,57,58,59,180], axis = 1)
 
 # save pickle 
-with open(filepath+"blogfeedback_test.pkl","wb") as file:
+with open(filepath+"blog_test.pkl","wb") as file:
     pickle.dump([test, test_mono, y_test],file)
 print("Done")     

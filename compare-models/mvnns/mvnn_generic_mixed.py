@@ -5,10 +5,6 @@ import torch.nn as nn
 from mvnns.layers import *
 from mvnns.mvnn_generic import MVNN_GENERIC
 
-<<<<<<< HEAD
-
-=======
->>>>>>> a73a4e0ac45618d4ad9e61414f7311fa2a90a923
 class MVNN_GENERIC_MIXED(nn.Module):
 
     def __init__(self,
@@ -61,6 +57,7 @@ class MVNN_GENERIC_MIXED(nn.Module):
 
         self.mvnn_input = MVNN_GENERIC(input_dim,num_hidden_units,num_hidden_layers,dropout_prob,layer_type,target_max,init_method,random_ts,trainable_ts,init_E,init_Var,init_b,init_bias,init_little_const,lin_skip_connection,capacity_generic_goods, output_inner_mvnn)
         self.intermediate = nn.Linear(output_inner_mvnn + non_mono_output_dim*2 ,final_input_dim,bias=True)
+        # this mvnn must have at least 3 hidden layers 
         self.mvnn_final = MVNN_GENERIC(final_input_dim,final_num_hidden_units,final_num_hidden_layers,final_dropout_prob,final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
         self.non_mono_layers = []
 

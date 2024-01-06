@@ -52,12 +52,12 @@ def init_parser():
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=2, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=50)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -159,87 +159,52 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 
 
 
-def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
+def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
     # load dataset using pickle
     # parse filepath
+    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
+    with open(filepath, "rb") as file:
+        dataset = pickle.load(file)
+    X = dataset[0]
+    y = dataset[1]
+    if args.use_dummy:
+        X = [bundle+(0,) for bundle in X]
 
-    if args.dataset == "lsvm" or args.dataset == "gsvm" or args.dataset == "mrvm" or args.dataset == "gsvm":
-        filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
-        
-        with open(filepath, "rb") as file:
-            dataset = pickle.load(file)
-        X = dataset[0]
-        y = dataset[1]
-        if args.use_dummy:
-            X = [bundle+(0,) for bundle in X]
+    #in case train percent is not set, use num_train_data
+    if train_percent == 0:
+        train_percent = len(X)/num_train_data
 
-        #in case train percent is not set, use num_train_data
-        #if train_percent == 0:
-        #    train_percent = len(X)/num_train_data
+    #do train val test split
+    X_train, test_and_val_X, y_train, test_and_val_y = train_test_split(X, y, test_size=train_percent, random_state=1)
+    X_val, X_test, y_val, y_test = train_test_split(test_and_val_X,test_and_val_y, test_size=0.5, random_state=1)
 
-        #do train val test split
-        X_train, test_and_val_X, y_train, test_and_val_y = train_test_split(X, y, test_size=train_percent, random_state=1)
-        X_val, X_test, y_val, y_test = train_test_split(test_and_val_X,test_and_val_y, test_size=0.5, random_state=1)
-
-        # transform to tensors
-        X_train_tensor = torch.FloatTensor(X_train).float()
-        y_train_tensor = torch.FloatTensor(y_train).float()
-        X_val_tensor = torch.FloatTensor(X_val).float()
-        y_val_tensor = torch.FloatTensor(y_val).float()
-        X_test_tensor = torch.FloatTensor(X_test).float()
-        y_test_tensor = torch.FloatTensor(y_test).float()
-        
-        if args.scale: 
-            max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
-            print(max_val, " is max_val " ) 
-            y_train_tensor = torch.div(y_train_tensor, max_val)
-            y_val_tensor = torch.div(y_val_tensor, max_val)
-            y_test_tensor = torch.div(y_test_tensor, max_val)
+    # transform to tensors
+    X_train_tensor = torch.FloatTensor(X_train).float()
+    y_train_tensor = torch.FloatTensor(y_train).float()
+    X_val_tensor = torch.FloatTensor(X_val).float()
+    y_val_tensor = torch.FloatTensor(y_val).float()
+    X_test_tensor = torch.FloatTensor(X_test).float()
+    y_test_tensor = torch.FloatTensor(y_test).float()
+    
+    if args.scale: 
+        max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
+        print(max_val, " is max_val " ) 
+        y_train_tensor = torch.div(y_train_tensor, max_val)
+        y_val_tensor = torch.div(y_val_tensor, max_val)
+        y_test_tensor = torch.div(y_test_tensor, max_val)
 
 
-        #create datasets for dataloader
-        return TensorDataset(X_train_tensor, y_train_tensor), TensorDataset(X_val_tensor, y_val_tensor),TensorDataset(X_test_tensor, y_test_tensor)
+    #create datasets for dataloader
+    return TensorDataset(X_train_tensor, y_train_tensor), TensorDataset(X_val_tensor, y_val_tensor),TensorDataset(X_test_tensor, y_test_tensor)
+    """
+    else: 
+        filepath = "./dataset_generation/experiment_2/blogfeedback/"
+        with open(filepath+"blogfeedback_train.pkl","rb") as file: 
+            dataset_train = pickle.load(file)
 
-
-
-    # Load Mixed Datasets
-    else:     
-        filepath = "./dataset_generation/experiment2/"
-        with open(filepath+ str(args.dataset)+"_train.pkl", "rb") as file: 
-            dataset = pickle.load(file)
-        X_non_mono_train = dataset[0]
-        X_mono_train = dataset[1]
-        y_train = dataset[2]
-
-        with open(filepath+str(args.dataset)+"_test.pkl","rb") as file: 
+        with open(filepath+"blogfeedback_test.pkl","rb") as file: 
             dataset_test = pickle.load(file)
-        X_non_mono_test = dataset_test[0]
-        X_mono_test = dataset_test[1]
-        y_test = dataset_test[2]
-
-        # mono train val test split
-        X_non_mono_train, X_non_mono_val, y_non_mono_train, y_non_mono_val = train_test_split(X_non_mono_train, y_train, test_size=train_percent, random_state=1)
-        X_mono_train, X_mono_val, y_mono_train, y_mono_val = train_test_split(X_mono_train, y_train, test_size=train_percent, random_state=1)
-
-        # transform to tensors
-        X_train_tensor = torch.FloatTensor(X_train).float()
-        y_train_tensor = torch.FloatTensor(y_train).float()
-        X_val_tensor = torch.FloatTensor(X_val).float()
-        y_val_tensor = torch.FloatTensor(y_val).float()
-        X_test_tensor = torch.FloatTensor(X_test).float()
-        y_test_tensor = torch.FloatTensor(y_test).float()
-        
-        if args.scale: 
-            max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
-            print(max_val, " is max_val " ) 
-            y_train_tensor = torch.div(y_train_tensor, max_val)
-            y_val_tensor = torch.div(y_val_tensor, max_val)
-            y_test_tensor = torch.div(y_test_tensor, max_val)
-
-
-        #create datasets for dataloader
-        return TensorDataset(X_train_tensor, y_train_tensor), TensorDataset(X_val_tensor, y_val_tensor),TensorDataset(X_test_tensor, y_test_tensor)
-
+            """
 
 
 
@@ -947,8 +912,8 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
-    #MODEL = "CERT"
+    #MODEL = "MVNN"
+    MODEL = "CERT"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
