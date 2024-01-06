@@ -491,7 +491,7 @@ def get_cert(args, train_shape, cert_parameters):
     #             non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
     mono_shape = train_shape[0]
     non_mono_shape = train_shape[1]
-    if args.use_dummy:
+    if args.model == "CERT":
         model = MLP_relu(train_shape-1, 1,1,1,5,5,False, False)
     elif args.dataset == "blog":
         model = MLP_relu(mono_shape,non_mono_shape,pcert_parameters["mono_sub_num"], pcert_parameters["non_mono_sub_num"], pcert_parameters["mono_hidden_num"], pcert_parameters["non_mono_hidden_num"], pcert_parameters["compress_non_mono"], pcert_parameters["normalize_regression"])
@@ -510,7 +510,7 @@ def get_cert(args, train_shape, cert_parameters):
 # generate plots -> separate File
 def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0]):
     print("--Starting Training--")
-    train_shape = train[0][0].shape[0]
+    train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
     # metrics for regression
     loss_mse = torch.nn.MSELoss()
 
@@ -560,8 +560,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
             if args.model == 'PCERT':
                 predictions = model.forward(batch[0],batch[1])
-                loss = loss_mse(predictions.squeeze(1), batch[2][:, bidder_id].squeeze(1))
-                in_list, out_list = model.reg_forward(train_shape, train_shape - n_dummy)
+                loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
+                in_list, out_list = model.reg_forward(train_shape[1] + train_shape[0], train_shape[0])
                 reg_loss = generate_regularizer(in_list, out_list)
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
@@ -619,6 +619,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             elif args.model == "PMVNN":
                 predictions = model.forward(batch[0], batch[1])
+            elif args.model == "PCERT":
+                predictions = model.forward(batch[0], batch[1])
 
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
             #print("Val loss is : " ,val_loss.item())
@@ -669,6 +671,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         elif args.model == "CERT":
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
         elif args.model == "PMVNN":
+            predictions = model.forward(batch[0], batch[1])
+        elif args.model == "PCERT":
             predictions = model.forward(batch[0], batch[1])
         test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
@@ -734,6 +738,10 @@ def get_model(args, train_shape):
         model = get_umnn(umnn_parameters, train_shape, device)
 
     elif args.model == 'CERT':
+        print("LOADING CERT")
+        model = get_cert(args, train_shape, cert_parameters)
+
+    elif args.model == 'PCERT':
         print("LOADING CERT")
         model = get_cert(args, train_shape, cert_parameters)
 
@@ -964,17 +972,17 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    wandb.agent(sweep_id, function=main, count=30)
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
+    #wandb.agent(sweep_id, function=main, count=30)
 
 
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
-    #print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    print("Testing classic Main") 
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
 
