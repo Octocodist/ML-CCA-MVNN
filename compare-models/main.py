@@ -45,7 +45,7 @@ def init_parser():
 
     ### experiment parameters ###
     parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
-    parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
+    parser.add_argument("--dataset", help="dataset to use", default="blog", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN"], default='PMVNN')
@@ -118,7 +118,7 @@ final_input_dim: int,
                  final_capacity_generic_goods: np.array,
                  final_output_inner_mvnn: int,
                  """
-partial_mvnn_parameters = {'num_hidden_layers': 1,
+partial_mvnn_parameters = {'num_hidden_layers': 2,
                            'num_hidden_units': 20,
                            'layer_type': 'MVNNLayerReLUProjected',
                            'target_max': 1,
@@ -132,10 +132,11 @@ partial_mvnn_parameters = {'num_hidden_layers': 1,
                            'init_b': 0.05,
                            'init_bias': 0.05,
                            'init_little_const': 0.1,
+                           'output_inner_mvnn': 15, 
 
-                           'non_mono_num_hidden_layers': 1,
+                           'non_mono_num_hidden_layers': 2,
                            'non_mono_num_hidden_units': 20,
-                           'non_mono_output_dim': 20,
+                           'non_mono_output_dim': 10,
                            'non_mono_lin_skip_connection': 0,
                            'non_mono_dropout_prob': 0,
 
@@ -207,12 +208,12 @@ def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
 
     # Load Mixed Datasets
     else:     
-        filepath = "./dataset_generation/experiment2/"
+        filepath = "./dataset_generation/experiment_2/"
         with open(filepath+ str(args.dataset)+"_train.pkl", "rb") as file: 
             dataset = pickle.load(file)
-        X_non_mono_train = dataset[0]
-        X_mono_train = dataset[1]
-        y_train = dataset[2]
+        X_non_mono_tv = dataset[0]
+        X_mono_tv = dataset[1]
+        y_tv = dataset[2]
 
         with open(filepath+str(args.dataset)+"_test.pkl","rb") as file: 
             dataset_test = pickle.load(file)
@@ -221,27 +222,28 @@ def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
         y_test = dataset_test[2]
 
         # mono train val test split
-        # THIs is likely wrong
 
-        X_non_mono_train, X_non_mono_val, y_non_mono_train, y_non_mono_val = train_test_split(X_non_mono_train, y_train, test_size=train_percent, random_state=666)
-        X_mono_train, X_mono_val, y_mono_train, y_mono_val = train_test_split(X_mono_train, y_train, test_size=train_percent, random_state=666)
+        X_non_mono_train, X_non_mono_val, y_non_mono_train, y_non_mono_val = train_test_split(X_non_mono_tv, y_tv, test_size=train_percent, random_state=666)
+        X_mono_train, X_mono_val, y_mono_train, y_mono_val = train_test_split(X_mono_tv, y_tv, test_size=train_percent, random_state=666)
 
         # these should be the same
-        assert(y_non_mono_train == y_mono_train)
-        assert(y_non_mono_val == y_mono_val)
+        assert(y_non_mono_train.iloc[0,0]== y_mono_train.iloc[0,0])
+        #assert(y_non_mono_val == y_mono_val)
+
+        #print(X_non_mono_train.type) 
 
         # transform to tensors
-        X_non_mono_train_tensor = torch.FloatTensor(X_non_mono_train).float()
-        X_non_mono_val_tensor = torch.FloatTensor(X_non_mono_val).float()
-        X_non_mono_test_tensor = torch.FloatTensor(X_non_mono_test).float()
+        X_non_mono_train_tensor = torch.Tensor(X_non_mono_train.values)
+        X_non_mono_val_tensor = torch.FloatTensor(X_non_mono_val.values)
+        X_non_mono_test_tensor = torch.FloatTensor(X_non_mono_test.values)
 
-        X_mono_train_tensor = torch.FloatTensor(X_mono_train).float()
-        X_mono_val_tensor = torch.FloatTensor(X_mono_val).float()
-        X_mono_test_tensor = torch.FloatTensor(X_mono_test).float()
+        X_mono_train_tensor = torch.FloatTensor(X_mono_train.values)
+        X_mono_val_tensor = torch.FloatTensor(X_mono_val.values)
+        X_mono_test_tensor = torch.FloatTensor(X_mono_test.values)
 
-        y_train_tensor = torch.FloatTensor(y_non_mono_train).float()
-        y_val_tensor = torch.FloatTensor(y_non_mono_val).float()
-        y_test_tensor = torch.FloatTensor(y_test).float()
+        y_train_tensor = torch.FloatTensor(y_non_mono_train.values)
+        y_val_tensor = torch.FloatTensor(y_non_mono_val.values)
+        y_test_tensor = torch.FloatTensor(y_test.values)
 
 
         #y_mono_train_tensor = torch.FloatTensor(y_mono_train).float()
@@ -497,18 +499,16 @@ def get_mvnn(args, input_shape,n_dummy=1):
     return model
 
 def get_mvnn_partial(args, input_shape):
-
-
     input_shape_mono = input_shape[0]
     input_shape_non_mono = input_shape[1]
+    print("input shape mono is : ", input_shape_mono, "non mono: ", input_shape_non_mono) 
     capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
     model = MVNN_GENERIC_PARTIAL(input_dim=input_shape_mono,
                                  num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
                                  num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
+                                 dropout_prob=partial_mvnn_parameters['dropout_prob'],
                                  layer_type=partial_mvnn_parameters['layer_type'],
                                  target_max=partial_mvnn_parameters['target_max'],
-                                 lin_skip_connection=args.lin_skip_connection,
-                                 dropout_prob=partial_mvnn_parameters['dropout_prob'],
                                  init_method=partial_mvnn_parameters['init_method'],
                                  random_ts=partial_mvnn_parameters['random_ts'],
                                  trainable_ts=partial_mvnn_parameters['trainable_ts'],
@@ -517,7 +517,8 @@ def get_mvnn_partial(args, input_shape):
                                  init_b=partial_mvnn_parameters['init_b'],
                                  init_bias=partial_mvnn_parameters['init_bias'],
                                  init_little_const=partial_mvnn_parameters['init_little_const'],
-                                 capacity_generic_goods=capacity_generic_goods,
+                                 lin_skip_connection=args.lin_skip_connection,
+                                 output_inner_mvnn = partial_mvnn_parameters['output_inner_mvnn'],
 
                                  non_mono_input_dim=input_shape_non_mono,
                                  non_mono_num_hidden_layers=partial_mvnn_parameters['non_mono_num_hidden_layers'],
@@ -528,10 +529,9 @@ def get_mvnn_partial(args, input_shape):
 
                                  final_num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
                                  final_num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
+                                 final_dropout_prob=partial_mvnn_parameters['dropout_prob'],
                                  final_layer_type=partial_mvnn_parameters['layer_type'],
                                  final_target_max=partial_mvnn_parameters['target_max'],
-                                 final_lin_skip_connection=args.final_lin_skip_connection,
-                                 final_dropout_prob=partial_mvnn_parameters['dropout_prob'],
                                  final_init_method=partial_mvnn_parameters['init_method'],
                                  final_random_ts=partial_mvnn_parameters['random_ts'],
                                  final_trainable_ts=partial_mvnn_parameters['trainable_ts'],
@@ -540,7 +540,10 @@ def get_mvnn_partial(args, input_shape):
                                  final_init_b=partial_mvnn_parameters['init_b'],
                                  final_init_bias=partial_mvnn_parameters['init_bias'],
                                  final_init_little_const=partial_mvnn_parameters['init_little_const'],
-                                 final_capacity_generic_goods=capacity_generic_goods
+                                 final_lin_skip_connection=args.final_lin_skip_connection,
+                                 final_output_inner_mvnn = partial_mvnn_parameters['final_output_inner_mvnn'],
+                                 final_capacity_generic_goods=capacity_generic_goods,
+                                 capacity_generic_goods=capacity_generic_goods,
                                  )
     return model
 
@@ -634,6 +637,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 model.transform_weights()
 
             elif args.model == "PMVNN":
+                print(batch[0].shape, "   ", batch[1].shape)
                 predictions = model.forward(batch[0], batch[1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[2])
                 loss_tot.backward()
@@ -936,7 +940,7 @@ def main(args=None):
 
             ### load dataset ###
             train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-            train_shape = [train[0][0].shape[0], train[1][0].shape[0]]
+            train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
 
             #print(train_shape, " is the train shape and seed is ", seed)
             #print("--- Loaded dataset successfully ---")
@@ -989,8 +993,9 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
+    #MODEL = "MVNN"
     #MODEL = "CERT"
+    MODEL = "PMVNN"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -1010,8 +1015,8 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Monotone Experiment")
-    wandb.agent(sweep_id, function=main, count=30)
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="Monotone Experiment")
+    #wandb.agent(sweep_id, function=main, count=30)
 
 
 
@@ -1019,8 +1024,8 @@ if __name__ == "__main__":
     #print("Device is : " , device)
 
     #print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
 

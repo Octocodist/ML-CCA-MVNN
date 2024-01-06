@@ -26,8 +26,8 @@ y_train = train.iloc[:,-1].copy(deep=True)
 train = train.drop(columns = [51,52,53,54,56,57,58,59,180], axis = 1)
 
 # save pickle 
-with open(filepath+"blog_train.pkl","wb") as file:
-    pickle.dump([train, train_mono, y_train],file)
+with open(filepath+"/../blog_train.pkl","wb") as file:
+    pickle.dump([train, pd.DataFrame(train_mono),pd.DataFrame(y_train)],file)
 
 
 allFiles = glob.glob(filepath + "test/*.csv")
@@ -44,6 +44,6 @@ y_test = test.iloc[:,-1].copy(deep=True)
 test = test.drop(columns = [51,52,53,54,56,57,58,59,180], axis = 1)
 
 # save pickle 
-with open(filepath+"blog_test.pkl","wb") as file:
-    pickle.dump([test, test_mono, y_test],file)
+with open(filepath+"/../blog_test.pkl","wb") as file:
+    pickle.dump([test,pd.DataFrame(test_mono),pd.DataFrame(y_test)],file)
 print("Done")     

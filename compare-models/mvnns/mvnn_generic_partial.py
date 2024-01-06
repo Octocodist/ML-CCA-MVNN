@@ -55,12 +55,13 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
 
         super(MVNN_GENERIC_PARTIAL, self).__init__()
 
-        self.mvnn_input = MVNN_GENERIC(input_dim,num_hidden_units,num_hidden_layers,dropout_prob,layer_type,target_max,init_method,random_ts,trainable_ts,init_E,init_Var,init_b,init_bias,init_little_const,lin_skip_connection,capacity_generic_goods, output_inner_mvnn)
+        self.mvnn_input = MVNN_GENERIC(input_dim,num_hidden_layers, num_hidden_units,dropout_prob,layer_type,target_max,init_method,random_ts,trainable_ts,init_E,init_Var,init_b,init_bias,init_little_const,lin_skip_connection,capacity_generic_goods, output_inner_mvnn)
         #self.intermediate = nn.Linear(output_inner_mvnn + non_mono_output_dim*2 ,final_input_dim,bias=True)
         # this mvnn must have at least 3 hidden layers
         print( "dimensions are:  ", input_dim, non_mono_input_dim, output_inner_mvnn, non_mono_output_dim, final_output_inner_mvnn)
-        final_input_dim = output_inner_mvnn + non_mono_output_dim
-        self.mvnn_final = MVNN_GENERIC(final_input_dim,final_num_hidden_units,final_num_hidden_layers,final_dropout_prob,final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
+        final_input_dims = output_inner_mvnn + non_mono_output_dim
+        print("final output is : ", final_input_dims) 
+        self.mvnn_final_1 = MVNN_GENERIC(final_input_dims, final_num_hidden_layers,final_num_hidden_units,final_dropout_prob, final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
         self.non_mono_layers = []
 
         #initial layer
@@ -77,9 +78,9 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
                 nn.Linear(non_mono_num_hidden_units,
                          non_mono_num_hidden_units,
                          bias=True
-                         )
+                         ))
             self.non_mono_layers.append(nn.ReLU())
-            )
+            
         self.non_mono_list = torch.nn.ModuleList(self.non_mono_layers)
         self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=non_mono_dropout_prob) for _ in range(len(self.non_mono_list))])
 
@@ -97,28 +98,31 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
         if non_mono_lin_skip_connection:
             self.lin_skip_layer = nn.Linear(non_mono_input_dim,non_mono_output_dim,bias=False)
 
-        def forward(self, x_mono, x_non_mono):
-            x_mono = self.mvnn_input(x_mono)
+    def forward(self, x_mono, x_non_mono):
 
-            if hasattr(self, 'non_mono_lin_skip_layer'):
-                x_in_non_mono = x_non_mono
+        print("shape x_mono: ", x_mono.shape) 
+        x_mono = self.mvnn_input(x_mono)
 
-            # Non-Monotonic part
-            x_non_mono = self.non_mono_net(x_non_mono)
-            #for layer, dropout in zip(self.non_mono_layers, self.non_mono_dropouts):
-            #    x_non_mono = layer(x_non_mono)
-            #    x_non_mono = dropout(x_non_mono)
+        if hasattr(self, 'non_mono_lin_skip_layer'):
+            x_in_non_mono = x_non_mono
 
-            # Output layer
-            if hasattr(self, 'non_mono_lin_skip_layer'):
-                x_non_mono = self.output_activation_function(self.non_mono_output_layer(x_non_mono)) + self.lin_skip_layer(x_in_non_mono)
-            else:
-                x_non_mono = self.output_activation_function(self.output_layer(x_non_mono))
-            x_middle = torch.cat((x_mono,x_non_mono),dim=1)
+        # Non-Monotonic part
+        x_non_mono = self.non_mono_net(x_non_mono)
+        #for layer, dropout in zip(self.non_mono_layers, self.non_mono_dropouts):
+        #    x_non_mono = layer(x_non_mono)
+        #    x_non_mono = dropout(x_non_mono)
 
-            x_final = self.mvnn_final(x_middle)
+        # Output layer
+        if hasattr(self, 'non_mono_lin_skip_layer'):
+            x_non_mono = self.non_mono_output_activation(self.non_mono_output_layer(x_non_mono)) + self.lin_skip_layer(x_in_non_mono)
+        else:
+            x_non_mono = self.non_mono_output_activation(self.non_mono_output_layer(x_non_mono))
+        x_middle = torch.cat((x_mono,x_non_mono),dim=1)
 
-            return x_final
+        print(" middle shape: ", x_middle.shape)
+        x_final = self.mvnn_final_1(x_middle)
+
+        return x_final
     def transform_weights(self):
         self.mvnn_input.transform_weights()
         self.mvnn_final.transform_weights()
