@@ -44,13 +44,12 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='UMNN')
 
-    parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
+    parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
@@ -58,7 +57,7 @@ def init_parser():
 
     ### training parameters ###
     parser.add_argument("-e","--epochs", help="number of epochs to train", default=50)
-    parser.add_argument("--batch_size", help="batch size to use", default=128)
+    parser.add_argument("--batch_size", help="batch size to use", default=64)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
@@ -172,11 +171,11 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
 
     #in case train percent is not set, use num_train_data
     if train_percent == 0:
-        train_percent = len(X)/num_train_data
+        train_percent = num_train_data/len(X)
 
     #do train val test split
-    X_train, test_and_val_X, y_train, test_and_val_y = train_test_split(X, y, test_size=train_percent, random_state=1)
-    X_val, X_test, y_val, y_test = train_test_split(test_and_val_X,test_and_val_y, test_size=0.5, random_state=1)
+    X_train, test_and_val_X, y_train, test_and_val_y = train_test_split(X, y, train_size=train_percent, random_state=1)
+    X_val, X_test, y_val, y_test = train_test_split(test_and_val_X,test_and_val_y, test_size=0.9, random_state=1)
 
     # transform to tensors
     X_train_tensor = torch.FloatTensor(X_train).float()
@@ -186,6 +185,9 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
     X_test_tensor = torch.FloatTensor(X_test).float()
     y_test_tensor = torch.FloatTensor(y_test).float()
     
+    print( "X_train_tensor shape is : " , X_train_tensor.size())
+    print( "X_val_tensor shape is : " , X_val_tensor.size())
+    print( "X_test_tensor shape is : " , X_test_tensor.size())
     if args.scale: 
         max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
         print(max_val, " is max_val " ) 
@@ -590,7 +592,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                        ])
 
         ### Validation ###
-        print("START validation")
+        #print("START validation")
         val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
         for batch in val_loader:
             #batch = batch.to(device)
@@ -598,10 +600,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 predictions = model.forward(batch[0])
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-            val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+            val_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
             #print("Val loss is : " ,val_loss.item())
 
-            seed_metrics_val.append([loss_tot.item(),
+            seed_metrics_val.append([val_loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -636,7 +638,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                        "Batch_num":  batch_num,
                        "Epoch":  epoch_num})
             """
-        print("END validation")
+    print("END train and validation")
     print("Start Testing")
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
@@ -646,9 +648,9 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0])
         else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-        test_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+        test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
-        seed_metrics_test.append([loss_tot.item(),
+        seed_metrics_test.append([test_loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
@@ -861,7 +863,7 @@ def main(args=None):
             train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
             train_shape = train[0][0].shape[0]
 
-            #print(train_shape, " is the train shape and seed is ", seed)
+            print(train_shape, " is the train shape and seed is ", seed )
             #print("--- Loaded dataset successfully ---")
 
             ### define model ###
@@ -920,6 +922,7 @@ if __name__ == "__main__":
     #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
     #wandb.config.update(args, allow_val_change=True)
     sweep_config = { 
+        "name": "Experiment1",
         "method": "random", 
         "metric": {"goal": "minimize", "name": "val_loss"}, 
         "parameters": {
@@ -928,13 +931,13 @@ if __name__ == "__main__":
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
             "model": {"values":[str(MODEL)]},
-            #"dataset": {"values":["lsvm"]}, 
-            "dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "dataset": {"values":["lsvm"]}, 
+            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             "bidder_id":{ "values": [0]},
             }
         }
     sweep_id = wandb.sweep(sweep=sweep_config, project="Monotone Experiment")
-    wandb.agent(sweep_id, function=main, count=30)
+    wandb.agent(sweep_id, function=main, count=5)
 
 
 
