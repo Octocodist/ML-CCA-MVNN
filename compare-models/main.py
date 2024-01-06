@@ -48,7 +48,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="blog", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN"], default='PMVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT"], default='PCERT')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -316,77 +316,10 @@ def generate_regularizer(in_list, out_list):
     reg_loss = min_derivative
     return reg_loss
 
-
 class MLP_relu(nn.Module):
-    def __init__(self, input_feature, output_features=1,  num_hidden_layers=1, hidden_nodes=20):
-        super(MLP_relu, self).__init__()
-
-        self.fc_in = nn.Linear(input_feature, hidden_nodes, bias=True)
-
-        self.hidden_layers = nn.ModuleList(
-            [nn.Linear(hidden_nodes, hidden_nodes, bias=True) for i in range(num_hidden_layers)])
-        self.fc_last = nn.Linear(hidden_nodes, output_features, bias=True)
-
-        self.lam = 10
-        self.hidden_nodes = hidden_nodes
-
-    def forward(self, x,y=None,  unscaled=True):
-        # scale features to be between 0 and 1
-        if unscaled:
-            x = F.hardtanh(x, min_val=0.0, max_val=1.0)
-
-        x = self.fc_in(x)
-        x = F.relu(x)
-
-        #fun through all the hidden layers
-        for i in range(int(len(self.hidden_layers))):
-            x = self.hidden_layers[i](x)
-            x = F.hardtanh(x, min_val=0.0, max_val=1.0)
-
-        x = self.fc_last(x)
-        out = x
-        #if self.normalize_regression:
-        #    out = F.sigmoid(out)
-        return out
-
-    # this is used to decouple betwwen monotone and non monotone
-    def reg_forward(self, feature_num, batch_size=512, hidden_nodes=20):
-        in_list = []
-        out_list = []
-        #create a torch random number vector in the intervalk 0 and 1 with size num x feature_num
-        input_feature = torch.rand(batch_size, feature_num)
-
-        #input_mono = input_feature[:, :mono_num]
-        #input_non_mono = input_feature[:, mono_num:]
-        input_feature.requires_grad = True
-
-        # feed through 1st layer and then append input to in_list
-        x = self.fc_in(input_feature)
-        in_list.append(input_feature)
-
-        x = F.relu(x)
-        for i in range(int(len(self.hidden_layers))):
-            x = self.hidden_layers[i](x)
-            out_list.append(x) # why do we append here already ?
-
-            input_feature = torch.rand(batch_size, hidden_nodes)
-            in_list.append(input_feature)
-            in_list[-1].requires_grad = True
-
-            #highly unsure whether this makes sense
-            x = self.hidden_layers[i](input_feature)
-            x = F.relu(x)
-
-        x = self.fc_last(x)
-        out_list.append(x)
-
-        return in_list, out_list
-
-
-class MLP_relu_dummy(nn.Module):
     def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
                  non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
-        super(MLP_relu_dummy, self).__init__()
+        super(MLP_relu, self).__init__()
         self.lam = 10
         self.normalize_regression = normalize_regression
         self.compress_non_mono = compress_non_mono
@@ -550,12 +483,18 @@ def get_mvnn_partial(args, input_shape):
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
     model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device=device, num_embedding_layers=umnn_parameters['num_embedding_layers'], num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'], num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'], num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'], nb_steps=umnn_parameters['nb_steps'])
     return model
-def get_cert(args, train_shape, cert_parameters):
 
+
+pcert_parameters = {"output_parameters": 1, "mono_sub_num" : 2, "non_mono_sub_num": 2, "mono_hidden_num": 20, "non_mono_hidden_num": 10, "compress_mono": False, "compress_non_mono": False, "normalize_regression": False}
+def get_cert(args, train_shape, cert_parameters):
+    #def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
+    #             non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
+    mono_shape = train_shape[0]
+    non_mono_shape = train_shape[1]
     if args.use_dummy:
-        model = MLP_relu_dummy(train_shape-1, 1,1,1,5,5,False, False)
-    else:
-        model = MLP_relu(train_shape, cert_parameters["output_parameters"], cert_parameters["num_hidden_layers"], cert_parameters["hidden_nodes"])
+        model = MLP_relu(train_shape-1, 1,1,1,5,5,False, False)
+    elif args.dataset == "blog":
+        model = MLP_relu(mono_shape,non_mono_shape,pcert_parameters["mono_sub_num"], pcert_parameters["non_mono_sub_num"], pcert_parameters["mono_hidden_num"], pcert_parameters["non_mono_hidden_num"], pcert_parameters["compress_non_mono"], pcert_parameters["normalize_regression"])
     return model
 
 
@@ -614,6 +553,14 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 n_dummy = 1
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
                 loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+                in_list, out_list = model.reg_forward(train_shape, train_shape - n_dummy)
+                reg_loss = generate_regularizer(in_list, out_list)
+                loss_tot = loss + model.lam * reg_loss
+                loss_tot.backward()
+                optimizer.step()
+            if args.model == 'PCERT':
+                predictions = model.forward(batch[0],batch[1])
+                loss = loss_mse(predictions.squeeze(1), batch[2][:, bidder_id].squeeze(1))
                 in_list, out_list = model.reg_forward(train_shape, train_shape - n_dummy)
                 reg_loss = generate_regularizer(in_list, out_list)
                 loss_tot = loss + model.lam * reg_loss
