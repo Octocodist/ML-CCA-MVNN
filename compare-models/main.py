@@ -52,12 +52,12 @@ def init_parser():
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=2, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=200)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -153,7 +153,7 @@ partial_mvnn_parameters = {'num_hidden_layers': 2,
                            'final_init_b': 0.05,
                            'final_init_bias': 0.05,
                            'final_init_little_const': 0.1,
-                           'final_lin_skip_connection': 1,
+                           'final_lin_skip_connection': 0,
                            'final_output_inner_mvnn': 1,
                            }
 
@@ -501,8 +501,8 @@ def get_mvnn(args, input_shape,n_dummy=1):
 def get_mvnn_partial(args, input_shape):
     input_shape_mono = input_shape[0]
     input_shape_non_mono = input_shape[1]
-    print("input shape mono is : ", input_shape_mono, "non mono: ", input_shape_non_mono) 
     capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
+    capacity_generic_goods_final = np.array([1 for _ in range(partial_mvnn_parameters['output_inner_mvnn']+partial_mvnn_parameters['non_mono_output_dim'])])
     model = MVNN_GENERIC_PARTIAL(input_dim=input_shape_mono,
                                  num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
                                  num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
@@ -542,7 +542,7 @@ def get_mvnn_partial(args, input_shape):
                                  final_init_little_const=partial_mvnn_parameters['init_little_const'],
                                  final_lin_skip_connection=args.final_lin_skip_connection,
                                  final_output_inner_mvnn = partial_mvnn_parameters['final_output_inner_mvnn'],
-                                 final_capacity_generic_goods=capacity_generic_goods,
+                                 final_capacity_generic_goods=capacity_generic_goods_final,
                                  capacity_generic_goods=capacity_generic_goods,
                                  )
     return model
@@ -637,9 +637,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 model.transform_weights()
 
             elif args.model == "PMVNN":
-                print(batch[0].shape, "   ", batch[1].shape)
                 predictions = model.forward(batch[0], batch[1])
-                loss_tot = loss_mse(predictions.squeeze(1),batch[2])
+                loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
@@ -718,10 +717,12 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
     for batch in test_loader:
         #batch = batch.to(device)
-        if args.model == "MVNN":
+        if args.model == "MVNN" or args.model == "UMNN":
             predictions = model.forward(batch[0])
-        else:
+        elif args.model == "CERT":
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
+        elif args.model == "PMVNN":
+            predictions = model.forward(batch[0], batch[1])
         test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
         seed_metrics_test.append([test_loss_tot.item(),
@@ -1010,13 +1011,14 @@ if __name__ == "__main__":
             "num_hidden_units": { "values": [10,40,160]},
             "lin_skip_connection": {"values": ["True", "False"]},
             "model": {"values":[str(MODEL)]},
+            "dataset": {"values":["blog"]}, 
             #"dataset": {"values":["lsvm"]}, 
-            "dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             "bidder_id":{ "values": [0]},
             }
         }
-    #sweep_id = wandb.sweep(sweep=sweep_config, project="Monotone Experiment")
-    #wandb.agent(sweep_id, function=main, count=30)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
+    wandb.agent(sweep_id, function=main, count=30)
 
 
 
@@ -1024,8 +1026,8 @@ if __name__ == "__main__":
     #print("Device is : " , device)
 
     #print("Testing classic Main") 
-    parser = init_parser()
-    args = parser.parse_args()
-    main(args)
+    #parser = init_parser()
+    #args = parser.parse_args()
+    #main(args)
     #exit()
 
