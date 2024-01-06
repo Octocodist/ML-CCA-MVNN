@@ -24,6 +24,7 @@ class MVNN_GENERIC(nn.Module):
                  init_little_const: float,
                  lin_skip_connection: bool,
                  capacity_generic_goods: np.array,
+                 output_size: int = 1,
                  *args, **kwargs):
 
         super(MVNN_GENERIC, self).__init__()
@@ -93,7 +94,7 @@ class MVNN_GENERIC(nn.Module):
         self.dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(len(self.layers))])
 
         self.output_layer = fc_layer(num_hidden_units,
-                                     1,
+                                     output_size,
                                      init_method=init_method,
                                      random_ts=random_ts,
                                      trainable_ts=trainable_ts,

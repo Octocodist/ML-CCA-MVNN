@@ -36,7 +36,7 @@ import argparse
 from torch.utils.data import DataLoader
 from certify import *
 #from config import cert_parameters, mvnn_parameters, umnn_parameters
-#from mvnns.mvnn_generic_mixed import MVNN_GENERIC_MIXED
+from mvnns.mvnn_generic_partial import MVNN_GENERIC_PARTIAL
 
 
 
@@ -48,7 +48,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN"], default='PMVNN')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -118,42 +118,45 @@ final_input_dim: int,
                  final_capacity_generic_goods: np.array,
                  final_output_inner_mvnn: int,
                  """
-mixed_mvnn_parameters = {'num_hidden_layers': 1,
-                   'num_hidden_units': 20,
-                   'layer_type': 'MVNNLayerReLUProjected',
-                   'target_max': 1,
-                   'lin_skip_connection': 1,
-                   'dropout_prob': 0,
-                   'init_method':'custom',
-                   'random_ts': [0,1],
-                   'trainable_ts': True,
-                   'init_E': 1,
-                   'init_Var': 0.09,
-                   'init_b': 0.05,
-                   'init_bias': 0.05,
-                   'init_little_const': 0.1, 
-                   'non_mono_num_hidden_layers': 1,
-                   'non_mono_num_hidden_units': 20,
-                   'non_mono_output_dim': 20, 
-                   'non_mono_lin_skip_connection': 0, 
-                   'non_mono_dropout_prob': 0,
-                   'final_num_hidden_layers': 1,
-                   'final_num_hidden_units': 20,
-                   'final_dropout_prob': 0,
-                   'final_layer_type': 'MVNNLayerReLUProjected',
-                   'final_target_max': 1,
-                   'final_init_method': 'custom',
-                   'final_random_ts': [0, 1],
-                   'final_trainable_ts': True,
-                   'final_init_E': 1,
-                   'final_init_Var': 0.09,
-                   'final_init_b': 0.05,
-                   'final_init_bias': 0.05,
-                   'final_init_little_const': 0.1,
-                   'final_lin_skip_connection': 1,
-                   'final_output_inner_mvnn': 20,
-                   }
+partial_mvnn_parameters = {'num_hidden_layers': 1,
+                           'num_hidden_units': 20,
+                           'layer_type': 'MVNNLayerReLUProjected',
+                           'target_max': 1,
+                           'lin_skip_connection': 1,
+                           'dropout_prob': 0,
+                           'init_method': 'custom',
+                           'random_ts': [0, 1],
+                           'trainable_ts': True,
+                           'init_E': 1,
+                           'init_Var': 0.09,
+                           'init_b': 0.05,
+                           'init_bias': 0.05,
+                           'init_little_const': 0.1,
 
+                           'non_mono_num_hidden_layers': 1,
+                           'non_mono_num_hidden_units': 20,
+                           'non_mono_output_dim': 20,
+                           'non_mono_lin_skip_connection': 0,
+                           'non_mono_dropout_prob': 0,
+
+                           'final_num_hidden_layers': 3,
+                           'final_num_hidden_units': 20,
+                           'final_dropout_prob': 0,
+                           'final_layer_type': 'MVNNLayerReLUProjected',
+                           'final_target_max': 1,
+                           'final_init_method': 'custom',
+                           'final_random_ts': [0, 1],
+                           'final_trainable_ts': True,
+                           'final_init_E': 1,
+                           'final_init_Var': 0.09,
+                           'final_init_b': 0.05,
+                           'final_init_bias': 0.05,
+                           'final_init_little_const': 0.1,
+                           'final_lin_skip_connection': 1,
+                           'final_output_inner_mvnn': 1,
+                           }
+
+umnn_parameters = {"num_embedding_layers": 1, "num_embedding_hiddens": 10, "num_main_hidden_layers" : 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 10 }
 #umnn_parameters = {"mon_in": 1, "cond_in": 10, "hiddens": [20,20], "n_out": 1, "nb_steps": 50, "device": "cpu"}
 cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes": 20}
 
@@ -218,17 +221,34 @@ def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
         y_test = dataset_test[2]
 
         # mono train val test split
-        X_non_mono_train, X_non_mono_val, y_non_mono_train, y_non_mono_val = train_test_split(X_non_mono_train, y_train, test_size=train_percent, random_state=1)
-        X_mono_train, X_mono_val, y_mono_train, y_mono_val = train_test_split(X_mono_train, y_train, test_size=train_percent, random_state=1)
+        # THIs is likely wrong
+
+        X_non_mono_train, X_non_mono_val, y_non_mono_train, y_non_mono_val = train_test_split(X_non_mono_train, y_train, test_size=train_percent, random_state=666)
+        X_mono_train, X_mono_val, y_mono_train, y_mono_val = train_test_split(X_mono_train, y_train, test_size=train_percent, random_state=666)
+
+        # these should be the same
+        assert(y_non_mono_train == y_mono_train)
+        assert(y_non_mono_val == y_mono_val)
 
         # transform to tensors
-        X_train_tensor = torch.FloatTensor(X_train).float()
-        y_train_tensor = torch.FloatTensor(y_train).float()
-        X_val_tensor = torch.FloatTensor(X_val).float()
-        y_val_tensor = torch.FloatTensor(y_val).float()
-        X_test_tensor = torch.FloatTensor(X_test).float()
+        X_non_mono_train_tensor = torch.FloatTensor(X_non_mono_train).float()
+        X_non_mono_val_tensor = torch.FloatTensor(X_non_mono_val).float()
+        X_non_mono_test_tensor = torch.FloatTensor(X_non_mono_test).float()
+
+        X_mono_train_tensor = torch.FloatTensor(X_mono_train).float()
+        X_mono_val_tensor = torch.FloatTensor(X_mono_val).float()
+        X_mono_test_tensor = torch.FloatTensor(X_mono_test).float()
+
+        y_train_tensor = torch.FloatTensor(y_non_mono_train).float()
+        y_val_tensor = torch.FloatTensor(y_non_mono_val).float()
         y_test_tensor = torch.FloatTensor(y_test).float()
-        
+
+
+        #y_mono_train_tensor = torch.FloatTensor(y_mono_train).float()
+        #y_mono_val_tensor = torch.FloatTensor(y_mono_val).float()
+        #y_test_tensor = torch.FloatTensor(y_test).float()
+
+
         if args.scale: 
             max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
             print(max_val, " is max_val " ) 
@@ -238,10 +258,7 @@ def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
 
 
         #create datasets for dataloader
-        return TensorDataset(X_train_tensor, y_train_tensor), TensorDataset(X_val_tensor, y_val_tensor),TensorDataset(X_test_tensor, y_test_tensor)
-
-
-
+        return TensorDataset(X_mono_train_tensor,X_non_mono_train_tensor, y_train_tensor), TensorDataset(X_mono_val_tensor,X_non_mono_val_tensor, y_val_tensor),TensorDataset(X_mono_test_tensor,X_non_mono_test_tensor, y_test_tensor)
 
 
 ### UMNN Section ###
@@ -478,49 +495,60 @@ def get_mvnn(args, input_shape,n_dummy=1):
                          output_size=1,
                          )
     return model
-def get_mixed_mvnn(args, input_shape_mono,input_shape_non_mono):
-    capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
-    mono_input = MVNN_GENERIC(input_dim=input_shape_mono,
-                         num_hidden_layers=mixed_mvnn_parameters['num_hidden_layers'],
-                         num_hidden_units=mixed_mvnn_parameters['num_hidden_units'],
-                         layer_type=mixed_mvnn_parameters['layer_type'],
-                         target_max=mixed_mvnn_parameters['target_max'],
-                         lin_skip_connection=args.lin_skip_connection,
-                         dropout_prob=mixed_mvnn_parameters['dropout_prob'],
-                         init_method=mixed_mvnn_parameters['init_method'],
-                         random_ts=mixed_mvnn_parameters['random_ts'],
-                         trainable_ts=mixed_mvnn_parameters['trainable_ts'],
-                         init_E=mixed_mvnn_parameters['init_E'],
-                         init_Var=mixed_mvnn_parameters['init_Var'],
-                         init_b=mixed_mvnn_parameters['init_b'],
-                         init_bias=mixed_mvnn_parameters['init_bias'],
-                         init_little_const=mixed_mvnn_parameters['init_little_const'],
-                         capacity_generic_goods=capacity_generic_goods,
-                         final_num_hidden_layers=mixed_mvnn_parameters['num_hidden_layers'],
-                         final_num_hidden_units=mixed_mvnn_parameters['num_hidden_units'],
-                         final_layer_type=mixed_mvnn_parameters['layer_type'],
-                         final_target_max=mixed_mvnn_parameters['target_max'],
-                         final_lin_skip_connection=args.final_lin_skip_connection,
-                         final_dropout_prob=mixed_mvnn_parameters['dropout_prob'],
-                         final_init_method=mixed_mvnn_parameters['init_method'],
-                         final_random_ts=mixed_mvnn_parameters['random_ts'],
-                         final_trainable_ts=mixed_mvnn_parameters['trainable_ts'],
-                         final_init_E=mixed_mvnn_parameters['init_E'],
-                         final_init_Var=mixed_mvnn_parameters['init_Var'],
-                         final_init_b=mixed_mvnn_parameters['init_b'],
-                         final_init_bias=mixed_mvnn_parameters['init_bias'],
-                         final_init_little_const=mixed_mvnn_parameters['init_little_const'],
-                         final_capacity_generic_goods=capacity_generic_goods
-                         )
-                         
-    return model
 
-umnn_parameters = {"num_embedding_layers": 1, "num_embedding_hiddens": 10, "num_main_hidden_layers" : 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 10 }
+def get_mvnn_partial(args, input_shape):
+
+
+    input_shape_mono = input_shape[0]
+    input_shape_non_mono = input_shape[1]
+    capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
+    model = MVNN_GENERIC_PARTIAL(input_dim=input_shape_mono,
+                                 num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
+                                 num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
+                                 layer_type=partial_mvnn_parameters['layer_type'],
+                                 target_max=partial_mvnn_parameters['target_max'],
+                                 lin_skip_connection=args.lin_skip_connection,
+                                 dropout_prob=partial_mvnn_parameters['dropout_prob'],
+                                 init_method=partial_mvnn_parameters['init_method'],
+                                 random_ts=partial_mvnn_parameters['random_ts'],
+                                 trainable_ts=partial_mvnn_parameters['trainable_ts'],
+                                 init_E=partial_mvnn_parameters['init_E'],
+                                 init_Var=partial_mvnn_parameters['init_Var'],
+                                 init_b=partial_mvnn_parameters['init_b'],
+                                 init_bias=partial_mvnn_parameters['init_bias'],
+                                 init_little_const=partial_mvnn_parameters['init_little_const'],
+                                 capacity_generic_goods=capacity_generic_goods,
+
+                                 non_mono_input_dim=input_shape_non_mono,
+                                 non_mono_num_hidden_layers=partial_mvnn_parameters['non_mono_num_hidden_layers'],
+                                 non_mono_num_hidden_units=partial_mvnn_parameters['non_mono_num_hidden_units'],
+                                 non_mono_output_dim=partial_mvnn_parameters['non_mono_output_dim'],
+                                 non_mono_lin_skip_connection=partial_mvnn_parameters['non_mono_lin_skip_connection'],
+                                 non_mono_dropout_prob=partial_mvnn_parameters['non_mono_dropout_prob'],
+
+                                 final_num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
+                                 final_num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
+                                 final_layer_type=partial_mvnn_parameters['layer_type'],
+                                 final_target_max=partial_mvnn_parameters['target_max'],
+                                 final_lin_skip_connection=args.final_lin_skip_connection,
+                                 final_dropout_prob=partial_mvnn_parameters['dropout_prob'],
+                                 final_init_method=partial_mvnn_parameters['init_method'],
+                                 final_random_ts=partial_mvnn_parameters['random_ts'],
+                                 final_trainable_ts=partial_mvnn_parameters['trainable_ts'],
+                                 final_init_E=partial_mvnn_parameters['init_E'],
+                                 final_init_Var=partial_mvnn_parameters['init_Var'],
+                                 final_init_b=partial_mvnn_parameters['init_b'],
+                                 final_init_bias=partial_mvnn_parameters['init_bias'],
+                                 final_init_little_const=partial_mvnn_parameters['init_little_const'],
+                                 final_capacity_generic_goods=capacity_generic_goods
+                                 )
+    return model
 
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
     model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device=device, num_embedding_layers=umnn_parameters['num_embedding_layers'], num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'], num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'], num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'], nb_steps=umnn_parameters['nb_steps'])
     return model
 def get_cert(args, train_shape, cert_parameters):
+
     if args.use_dummy:
         model = MLP_relu_dummy(train_shape-1, 1,1,1,5,5,False, False)
     else:
@@ -598,31 +626,37 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot.backward()
                 optimizer.step()
 
-            else:
+            elif args.model == "MVNN":
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
 
+            elif args.model == "PMVNN":
+                predictions = model.forward(batch[0], batch[1])
+                loss_tot = loss_mse(predictions.squeeze(1),batch[2])
+                loss_tot.backward()
+                optimizer.step()
+                model.transform_weights()
 
             seed_metrics_train.append([loss_tot.item(),
-                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       batch_num,
-                       epoch_num, 
-                       ])
+                                       loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                       loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                       loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                       kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                                       kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
+                                       batch_num,
+                                       epoch_num,
+                                       ])
 
         ### Validation ###
         print("START validation")
@@ -631,28 +665,31 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             #batch = batch.to(device)
             if args.model == "MVNN" or args.model == "UMNN":
                 predictions = model.forward(batch[0])
-            else :
+            elif args.model == "CERT":
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
+            elif args.model == "PMVNN":
+                predictions = model.forward(batch[0], batch[1])
+
             val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
             #print("Val loss is : " ,val_loss.item())
 
-            seed_metrics_val.append([loss_tot.item(),
-                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       batch_num,
-                       epoch_num, 
-                       ])
+            seed_metrics_val.append([val_loss.item(),
+                                     loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                     loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                     loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                     kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                                     kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
+                                     batch_num,
+                                     epoch_num,
+                                     ])
             """
             wandb.log({"val_loss": val_loss.item(),
                        "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -681,25 +718,25 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0])
         else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-        test_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+        test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
-        seed_metrics_test.append([loss_tot.item(),
-                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       batch_num,
-                       epoch_num, 
-                       ])
+        seed_metrics_test.append([test_loss_tot.item(),
+                                  loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                  loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                  loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                  kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                                  kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
+                                  batch_num,
+                                  epoch_num,
+                                  ])
         """
         wandb.log({"test_loss": test_loss.item(),
                    "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
@@ -747,7 +784,12 @@ def get_model(args, train_shape):
     elif args.model == 'CERT':
         print("LOADING CERT")
         model = get_cert(args, train_shape, cert_parameters)
-    return  model
+
+    elif args.model== "PMVNN":
+        model = get_mvnn_partial(args, train_shape)
+
+
+    return model
 
 def log_metrics(args, metrics):
     """
@@ -894,7 +936,7 @@ def main(args=None):
 
             ### load dataset ###
             train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-            train_shape = train[0][0].shape[0]
+            train_shape = [train[0][0].shape[0], train[1][0].shape[0]]
 
             #print(train_shape, " is the train shape and seed is ", seed)
             #print("--- Loaded dataset successfully ---")
@@ -905,7 +947,7 @@ def main(args=None):
 
 
             ### train model ###
-            model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed, infos=infos)
+            model, metrics, infos = train_model(args, model, train, val, test,  metrics, bidder_id=bidder, seed=seed, infos=infos)
             print("--- Trained model successfully ---")
 
         log_metrics(args, metrics)
