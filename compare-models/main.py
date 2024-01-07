@@ -57,7 +57,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=200)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -487,14 +487,20 @@ def get_umnn(umnn_parameters, input_shape, device="cpu"):
 
 pcert_parameters = {"output_parameters": 1, "mono_sub_num" : 2, "non_mono_sub_num": 2, "mono_hidden_num": 20, "non_mono_hidden_num": 10, "compress_mono": False, "compress_non_mono": False, "normalize_regression": False}
 def get_cert(args, train_shape, cert_parameters):
-    #def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
-    #             non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
     mono_shape = train_shape[0]
     non_mono_shape = train_shape[1]
     if args.model == "CERT":
-        model = MLP_relu(train_shape-1, 1,1,1,5,5,False, False)
-    elif args.dataset == "blog":
-        model = MLP_relu(mono_shape,non_mono_shape,pcert_parameters["mono_sub_num"], pcert_parameters["non_mono_sub_num"], pcert_parameters["mono_hidden_num"], pcert_parameters["non_mono_hidden_num"], pcert_parameters["compress_non_mono"], pcert_parameters["normalize_regression"])
+        print( "Normal CERT should not be run from this file !!" ) 
+        model = MLP_relu(train_shape[0] -1, 1,1,1,5,5,False, False)
+    return model
+
+def get_pcert(args, train_shape, cert_parameters):
+
+    mono_shape = train_shape[0]
+    non_mono_shape = train_shape[1]
+
+    model = MLP_relu(mono_shape,non_mono_shape,pcert_parameters["mono_sub_num"], pcert_parameters["non_mono_sub_num"], pcert_parameters["mono_hidden_num"], pcert_parameters["non_mono_hidden_num"], pcert_parameters["compress_non_mono"], pcert_parameters["normalize_regression"])
+
     return model
 
 
@@ -742,10 +748,11 @@ def get_model(args, train_shape):
         model = get_cert(args, train_shape, cert_parameters)
 
     elif args.model == 'PCERT':
-        print("LOADING CERT")
-        model = get_cert(args, train_shape, cert_parameters)
+        print("LOADING PCERT")
+        model = get_pcert(args, train_shape, cert_parameters)
 
     elif args.model== "PMVNN":
+        print("LOADING PMVNN")
         model = get_mvnn_partial(args, train_shape)
 
 
@@ -951,7 +958,8 @@ if __name__ == "__main__":
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
     #MODEL = "CERT"
-    MODEL = "PMVNN"
+    #MODEL = "PMVNN"
+    MODEL = "PCERT"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -972,8 +980,8 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    #sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    #wandb.agent(sweep_id, function=main, count=30)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
+    wandb.agent(sweep_id, function=main, count=30)
 
 
 
@@ -981,8 +989,8 @@ if __name__ == "__main__":
     #print("Device is : " , device)
 
     print("Testing classic Main") 
-    parser = init_parser()
-    args = parser.parse_args()
-    main(args)
+    #parser = init_parser()
+    #args = parser.parse_args()
+    #main(args)
     #exit()
 
