@@ -57,7 +57,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=20)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -867,7 +867,7 @@ def main(args=None):
     ## initialise wandb 
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
-    wandb.init(project="Monotone Experiment",id=run_id, group=group_id , reinit=True)
+    wandb.init(project="Experiment 3",id=run_id, group=group_id)
     wandb.log({"Started": True})
 
     # log  parameters 
@@ -958,8 +958,8 @@ if __name__ == "__main__":
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
     #MODEL = "CERT"
-    #MODEL = "PMVNN"
-    MODEL = "PCERT"
+    MODEL = "PMVNN"
+    #MODEL = "PCERT"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -980,8 +980,8 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    wandb.agent(sweep_id, function=main, count=30)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 3")
+    wandb.agent(sweep_id, function=main, count=3)
 
 
 
