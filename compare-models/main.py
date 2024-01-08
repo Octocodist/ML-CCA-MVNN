@@ -48,7 +48,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="blog", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT"], default='PCERT')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN"], default='PCERT')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -263,9 +263,40 @@ def load_dataset(args, num_train_data=1000, train_percent=0.2, seed=100):
         return TensorDataset(X_mono_train_tensor,X_non_mono_train_tensor, y_train_tensor), TensorDataset(X_mono_val_tensor,X_non_mono_val_tensor, y_val_tensor),TensorDataset(X_mono_test_tensor,X_non_mono_test_tensor, y_test_tensor)
 
 
+pumnn_parameters = {"out_embedding": 18, "num_embedding_layers": 1, "num_embedding_hiddens": 10, "num_main_hidden_layers" : 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 10 , "out_embedding_same": True}
+
 ### UMNN Section ###
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
+class PartialEmbeddingNet(nn.Module):
+    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
+        super(PartialEmbeddingNet, self).__init__()
+        ## Attention this dynamic setting of embedding was modified from the original code
+        self.layers = []
+        self.layers = [nn.Linear(in_embedding, num_embedding_hiddens), nn.ReLU()]
+        for i in range (num_embedding_layers):
+            self.layers.append(nn.Linear(num_embedding_hiddens, num_embedding_hiddens))
+            self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(num_embedding_hiddens, out_embedding))
+        self.layers.append(nn.ReLU())
+        self.embedding_net = nn.Sequential(*self.layers).to(device)
+        self.umnn_hidden = []
+        for i in range(num_main_hidden_layers):
+            self.umnn_hidden.append(num_main_hidden_nodes)
+        self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=self.umnn_hidden, n_out=1, nb_steps= nb_steps, device= device)
+        #self.embedding_net = nn.Sequential(nn.Linear(in_embedding, 200), nn.ReLU(),
+        #                                   nn.Linear(200, 200), nn.ReLU(),
+        #                                   nn.Linear(200, out_embedding), nn.ReLU()).to(device)
+        #self.umnn = SlowDMonotonicNN(in_main, cond_in=out_embedding, hiddens=[100, 100, 100], n_out=1, nb_steps= 300, device= device)
+
+    def set_steps(self, nb_steps):
+        self.umnn.set_steps(nb_steps)
+
+    def forward(self, x_mono, x_non_mono):
+        h = self.embedding_net(x_non_mono)
+
+        return torch.sigmoid(self.umnn(x_mono, h))
+
 class EmbeddingNet(nn.Module):
     def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
         super(EmbeddingNet, self).__init__()
@@ -480,12 +511,38 @@ def get_mvnn_partial(args, input_shape):
                                  )
     return model
 
+def get_pumnn(pumnn_parameters, input_shape, device="cpu"):
+    # this allows to set embedding network output size
+    if pumnn_parameters['out_embedding_same']:
+        out_embedding = input_shape[1]
+    else:
+        out_embedding = pumnn_parameters['out_embedding']
+
+    model = PartialEmbeddingNet(in_embedding=input_shape[1], # embedd the non_mono part
+                                in_main=input_shape[0], # this is mono size
+                                out_embedding=out_embedding,
+                                device=device,
+                                num_embedding_layers=pumnn_parameters['num_embedding_layers'],
+                                num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'],
+                                num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'],
+                                num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'],
+                                nb_steps=umnn_parameters['nb_steps'])
+    return model
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
-    model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device=device, num_embedding_layers=umnn_parameters['num_embedding_layers'], num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'], num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'], num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'], nb_steps=umnn_parameters['nb_steps'])
+    model = EmbeddingNet(in_embedding=input_shape,
+                         in_main=input_shape,
+                         out_embedding=input_shape,
+                         device=device,
+                         num_embedding_layers=umnn_parameters['num_embedding_layers'],
+                         num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'],
+                         num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'],
+                         num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'],
+                         nb_steps=umnn_parameters['nb_steps'])
     return model
 
 
 pcert_parameters = {"output_parameters": 1, "mono_sub_num" : 2, "non_mono_sub_num": 2, "mono_hidden_num": 20, "non_mono_hidden_num": 10, "compress_mono": False, "compress_non_mono": False, "normalize_regression": False}
+
 def get_cert(args, train_shape, cert_parameters):
     mono_shape = train_shape[0]
     non_mono_shape = train_shape[1]
@@ -496,10 +553,14 @@ def get_cert(args, train_shape, cert_parameters):
 
 def get_pcert(args, train_shape, cert_parameters):
 
-    mono_shape = train_shape[0]
-    non_mono_shape = train_shape[1]
-
-    model = MLP_relu(mono_shape,non_mono_shape,pcert_parameters["mono_sub_num"], pcert_parameters["non_mono_sub_num"], pcert_parameters["mono_hidden_num"], pcert_parameters["non_mono_hidden_num"], pcert_parameters["compress_non_mono"], pcert_parameters["normalize_regression"])
+    model = MLP_relu(train_shape[0],
+                     train_shape[1],
+                     pcert_parameters["mono_sub_num"],
+                     pcert_parameters["non_mono_sub_num"],
+                     pcert_parameters["mono_hidden_num"],
+                     pcert_parameters["non_mono_hidden_num"],
+                     pcert_parameters["compress_non_mono"],
+                     pcert_parameters["normalize_regression"])
 
     return model
 
@@ -551,6 +612,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
+            # Todo add to GPU
             #batch = batch.to(device)
             batch_num +=1
 
@@ -564,6 +626,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
+
             if args.model == 'PCERT':
                 predictions = model.forward(batch[0],batch[1])
                 loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
@@ -576,9 +639,15 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(1,10, [1])))
-
                 predictions = model.forward(batch[0])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+                loss_tot.backward()
+                optimizer.step()
+
+            elif args.model == 'PUMNN':
+                model.set_steps(int(torch.randint(1,10, [1])))
+                predictions = model.forward(batch[0], batch[1])
+                loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
                 optimizer.step()
 
@@ -680,6 +749,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0], batch[1])
         elif args.model == "PCERT":
             predictions = model.forward(batch[0], batch[1])
+        #elif args.model == "PUMNN":
+        #    predictions = model.forward(batch[0], batch[1])
         test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
         seed_metrics_test.append([test_loss_tot.item(),
@@ -754,6 +825,10 @@ def get_model(args, train_shape):
     elif args.model== "PMVNN":
         print("LOADING PMVNN")
         model = get_mvnn_partial(args, train_shape)
+
+    elif args.model== "PUMNN":
+        print("LOADING PUMNN")
+        model = get_pumnn(args, train_shape)
 
 
     return model
@@ -867,17 +942,18 @@ def main(args=None):
     ## initialise wandb 
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
-    wandb.init(project="Monotone Experiment",id=run_id, group=group_id , reinit=True)
+    wandb.init(project="Monotone Experiment",id=run_id, group=group_id)
     wandb.log({"Started": True})
 
-    # log  parameters 
+    # log  parameters
+    # TODO UPdate all params
     if args.model == "MVNN": 
         wandb.config.update(mvnn_parameters, allow_val_change=True)
 
     elif args.model == "UMNN":    
         wandb.config.update(umnn_parameters, allow_val_change=True)
 
-    else:        
+    else:
         wandb.config.update(cert_parameters, allow_val_change=True)
 
     args.__dict__.update(wandb.config)
@@ -885,59 +961,58 @@ def main(args=None):
     
 
     #hard set to 0 non monotone variables 
-    if args.model == "MVNN":
-        args.use_dummy = False
+    #if args.model == "MVNN":
+    #    args.use_dummy = False
 
-
-    # define metrics 
+    # define metrics
     metrics = [[],[],[]]
     infos = [0,0,0] # cumulative batch and epoch last is bool if CERT is extended  
 
 
     # TODO remove bidder id loop 
-    bidder_ids = [args.bidder_id]
-    for bidder in bidder_ids:
-        for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
-            wandb.log({"model": args.model, "dataset": args.dataset})
+    #bidder_ids = [args.bidder_id]
+    #for bidder in bidder_ids:
+    for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
+        wandb.log({"model": args.model, "dataset": args.dataset})
 
 
-            ### load dataset ###
-            train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-            train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
+        ### load dataset ###
+        train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
+        train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
 
-            #print(train_shape, " is the train shape and seed is ", seed)
-            #print("--- Loaded dataset successfully ---")
+        #print(train_shape, " is the train shape and seed is ", seed)
+        #print("--- Loaded dataset successfully ---")
 
-            ### define model ###
-            model = get_model(args, train_shape)
-            #print("--- Loaded model successfully ---")
+        ### define model ###
+        model = get_model(args, train_shape)
+        #print("--- Loaded model successfully ---")
 
 
-            ### train model ###
-            model, metrics, infos = train_model(args, model, train, val, test,  metrics, bidder_id=bidder, seed=seed, infos=infos)
-            print("--- Trained model successfully ---")
+        ### train model ###
+        model, metrics, infos = train_model(args, model, train, val, test,  metrics, bidder_id=args.bidder_id, seed=seed, infos=infos)
+        print("--- Trained model successfully ---")
 
-        log_metrics(args, metrics)
-        """
-            if args.model == "CERT":
-                pass
-                #    n_dummy = 1
-                #mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                while not mono_flag:
-                    model, metrics, infos = train_model(args, model, train, val, test, metrics, bidder_id=bidder, seed=seed, infos=infos)
-                    assert(args.use_dummy)
-                    mono_flag = certify_neural_network(model, train_shape-n_dummy)
-                    if not mono_flag:
-                        model.lam *= 10
-                        print("Network not monotonic, increasing regularization strength to ", model.lam)
-                        wandb.log({"lam":model.lam, "train_batch": infos[0]})
+    log_metrics(args, metrics)
+    """
+        if args.model == "CERT":
+            pass
+            #    n_dummy = 1
+            #mono_flag = certify_neural_network(model, train_shape-n_dummy)
+            while not mono_flag:
+                model, metrics, infos = train_model(args, model, train, val, test, metrics, bidder_id=bidder, seed=seed, infos=infos)
+                assert(args.use_dummy)
+                mono_flag = certify_neural_network(model, train_shape-n_dummy)
+                if not mono_flag:
+                    model.lam *= 10
+                    print("Network not monotonic, increasing regularization strength to ", model.lam)
+                    wandb.log({"lam":model.lam, "train_batch": infos[0]})
 
-                        if model.lam == 1000:
-                            print("Exiting because of too many trys in CERT")
-                            mono_flag = True
-               """ 
-        ### log metrics ###
-        #log_metrics(args, metrics)
+                    if model.lam == 1000:
+                        print("Exiting because of too many trys in CERT")
+                        mono_flag = True
+           """
+    ### log metrics ###
+    #log_metrics(args, metrics)
 
     
     wandb.finish()
@@ -960,6 +1035,7 @@ if __name__ == "__main__":
     #MODEL = "CERT"
     #MODEL = "PMVNN"
     MODEL = "PCERT"
+    MODEL = "PUMNN"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -980,8 +1056,8 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    wandb.agent(sweep_id, function=main, count=30)
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
+    #wandb.agent(sweep_id, function=main, count=30)
 
 
 
@@ -989,8 +1065,8 @@ if __name__ == "__main__":
     #print("Device is : " , device)
 
     print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
 
