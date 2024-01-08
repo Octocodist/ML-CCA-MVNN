@@ -293,9 +293,11 @@ class PartialEmbeddingNet(nn.Module):
         self.umnn.set_steps(nb_steps)
 
     def forward(self, x_mono, x_non_mono):
+
         h = self.embedding_net(x_non_mono)
 
-        return torch.sigmoid(self.umnn(x_mono, h))
+        # CARE THIS IS A MESSY QUICK FIX 
+        return torch.nan_to_num(torch.sigmoid(self.umnn(x_mono, h)))
 
 class EmbeddingNet(nn.Module):
     def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
@@ -511,9 +513,9 @@ def get_mvnn_partial(args, input_shape):
                                  )
     return model
 
-def get_pumnn(pumnn_parameters, input_shape, device="cpu"):
+def get_pumnn(pumnn_parameters,input_shape , device="cpu"):
     # this allows to set embedding network output size
-    if pumnn_parameters['out_embedding_same']:
+    if pumnn_parameters['out_embedding_same'] == True :
         out_embedding = input_shape[1]
     else:
         out_embedding = pumnn_parameters['out_embedding']
@@ -578,6 +580,7 @@ def get_pcert(args, train_shape, cert_parameters):
 def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0]):
     print("--Starting Training--")
     train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
+    print(" train shape is : ", train_shape) 
     # metrics for regression
     loss_mse = torch.nn.MSELoss()
 
@@ -650,6 +653,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
                 optimizer.step()
+                
 
             elif args.model == "MVNN":
                 predictions = model.forward(batch[0])
@@ -665,6 +669,24 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
                 model.transform_weights()
 
+            if args.dataset == "blog": 
+                seed_metrics_train.append([loss_tot.item(),
+                                           loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                           loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                           loss_evar(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_medabs(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_r2(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_maxerr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_mape(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_d2tw(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_mpl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_d2pl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           loss_d2abserr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                           kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[0],
+                                           kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[1],
+                                           batch_num,
+                                           epoch_num,
+                                           ])
             seed_metrics_train.append([loss_tot.item(),
                                        loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
                                        loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
@@ -696,45 +718,49 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 predictions = model.forward(batch[0], batch[1])
             elif args.model == "PCERT":
                 predictions = model.forward(batch[0], batch[1])
+            elif args.model == "PUMNN":
+                model.set_steps(int(torch.randint(1,10, [1])))
+                predictions = model.forward(batch[0], batch[1])
 
-            val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
-            #print("Val loss is : " ,val_loss.item())
 
-            seed_metrics_val.append([val_loss.item(),
-                                     loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
-                                     loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
-                                     loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                     kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
-                                     kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
-                                     batch_num,
-                                     epoch_num,
-                                     ])
-            """
-            wandb.log({"val_loss": val_loss.item(),
-                       "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       "val_loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       "val_loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_median_absolute_err": loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_r2": loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_max_err": loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       "val_kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       "val_kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       "Batch_num":  batch_num,
-                       "Epoch":  epoch_num})
-            """
+            if args.dataset == "blog":
+                val_loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
+                seed_metrics_val.append([val_loss.item(),
+                                         loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                         loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                         loss_evar(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_medabs(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_r2(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_maxerr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_mape(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2tw(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_mpl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2pl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2abserr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                         kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[0],
+                                         kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[1],
+                                         batch_num,
+                                         epoch_num,
+                                         ])
+            else:
+                val_loss = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+                seed_metrics_val.append([val_loss.item(),
+                                         loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                         loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                         loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                         kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                                         kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
+                                         batch_num,
+                                         epoch_num,
+                                         ])
         print("END validation")
     print("Start Testing")
         ### Test ###
@@ -749,27 +775,46 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0], batch[1])
         elif args.model == "PCERT":
             predictions = model.forward(batch[0], batch[1])
-        #elif args.model == "PUMNN":
-        #    predictions = model.forward(batch[0], batch[1])
-        test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
-        #print("test loss is : ", test_loss.item())
-        seed_metrics_test.append([test_loss_tot.item(),
-                                  loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
-                                  loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
-                                  loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
-                                  kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
-                                  kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
-                                  batch_num,
-                                  epoch_num,
-                                  ])
+        elif args.model == "PUMNN":
+            predictions = model.forward(batch[0], batch[1])
+        if args.dataset == "blog":
+            test_loss_tot = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
+            seed_metrics_test.append([test_loss_tot.item(),
+                                      loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                      loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
+                                      loss_evar(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_medabs(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_r2(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_maxerr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_mape(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2tw(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_mpl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2pl(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2abserr(y_true=batch[2].squeeze(1), y_pred=predictions.squeeze(1).detach()).item(),
+                                      kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[0],
+                                      kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[1],
+                                      batch_num,
+                                      epoch_num,
+                                      ])
+        else: 
+            test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+            seed_metrics_test.append([test_loss_tot.item(),
+                                      loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                      loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                                      loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_medabs(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_maxerr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_mape(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2tw(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_mpl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2pl(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      loss_d2abserr(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                                      kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                                      kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1],
+                                      batch_num,
+                                      epoch_num,
+                                      ])
         """
         wandb.log({"test_loss": test_loss.item(),
                    "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
@@ -805,13 +850,13 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
 #TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print("Device is : ", device)
     ### define model ###
     if args.model == 'MVNN':
         model = get_mvnn(args, train_shape)
 
     elif args.model == 'UMNN':
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print("Device is : ", device)
         model = get_umnn(umnn_parameters, train_shape, device)
 
     elif args.model == 'CERT':
@@ -828,7 +873,7 @@ def get_model(args, train_shape):
 
     elif args.model== "PUMNN":
         print("LOADING PUMNN")
-        model = get_pumnn(args, train_shape)
+        model = get_pumnn( pumnn_parameters,train_shape, device)
 
 
     return model
@@ -974,6 +1019,7 @@ def main(args=None):
     #for bidder in bidder_ids:
     for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
         wandb.log({"model": args.model, "dataset": args.dataset})
+        print( " Running model: ", args.model, " and dataset: ", args.dataset)
 
 
         ### load dataset ###
@@ -1034,7 +1080,7 @@ if __name__ == "__main__":
     #MODEL = "MVNN"
     #MODEL = "CERT"
     #MODEL = "PMVNN"
-    MODEL = "PCERT"
+    #MODEL = "PCERT"
     MODEL = "PUMNN"
     print("Running model: ", MODEL)
 
