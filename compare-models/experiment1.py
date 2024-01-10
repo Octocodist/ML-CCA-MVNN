@@ -47,30 +47,33 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='UMNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='MVNN')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
     parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
-    #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=50)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
     parser.add_argument("--batch_size", help="batch size to use", default=64)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
+    parser.add_argument("--l2_rate", help="l2 norm", default=0.)
 
     ### model parameters ###
-    parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=1)
-    parser.add_argument("--num_hidden_units", help="number of hidden units", default=20)
+    parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=12)
+    parser.add_argument("--num_hidden_units", help="number of hidden units", default=23)
     parser.add_argument("--layer_type", help="layer type", default="MVNNLayerReLUProjected")
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
+    # for CERT
+    parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
+    parser.add_argument("--normalize_regression", help="normalizing regression", type= bool, default=False)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
     #parser.add_argument("--trainable_ts", help="trainable ts", default=True)
@@ -158,10 +161,10 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 
 
 
-def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
+def load_dataset(args, num_train_data=100, train_percent=0, seed=100):
     # load dataset using pickle
     # parse filepath
-    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
+    filepath = "~/masterthesis/ML-CCA-MVNN/copmare_models/dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
     with open(filepath, "rb") as file:
         dataset = pickle.load(file)
     X = dataset[0]
@@ -189,7 +192,7 @@ def load_dataset(args, num_train_data=1000, train_percent=0, seed=100):
     print( "X_val_tensor shape is : " , X_val_tensor.size())
     print( "X_test_tensor shape is : " , X_test_tensor.size())
     if args.scale: 
-        max_val = max(torch.max(y_train_tensor).item(), torch.max(y_val_tensor).item(),torch.max( y_test_tensor).item())
+        max_val = max(torch.max(y_train_tensor).item()) 
         print(max_val, " is max_val " ) 
         y_train_tensor = torch.div(y_train_tensor, max_val)
         y_val_tensor = torch.div(y_val_tensor, max_val)
@@ -278,7 +281,7 @@ class MLP_relu(nn.Module):
         self.lam = 10
         self.hidden_nodes = hidden_nodes
 
-    def forward(self, x,y=None,  unscaled=True):
+    def forward(self, x,y=None,  unscaled=False):
         # scale features to be between 0 and 1
         if unscaled:
             x = F.hardtanh(x, min_val=0.0, max_val=1.0)
@@ -423,19 +426,17 @@ class MLP_relu_dummy(nn.Module):
 
 
 def get_mvnn(args, input_shape,n_dummy=1):
-    if not args.use_dummy:
-        n_dummy = 0
-    capacity_generic_goods = np.array([1 for _ in range(input_shape - n_dummy)])
-    model = MVNN_GENERIC(input_dim=input_shape - n_dummy,
-                         num_hidden_layers=mvnn_parameters['num_hidden_layers'],
-                         num_hidden_units=mvnn_parameters['num_hidden_units'],
+    capacity_generic_goods = np.array([1 for _ in range(input_shape - 1)])
+    model = MVNN_GENERIC(input_dim=input_shape - 1,
+                         num_hidden_layers=args.num_hidden_layers,
+                         num_hidden_units=args.num_hidden_units,
+                         lin_skip_connection=args.lin_skip_connection,
+                         dropout_prob=args.dropout_prob,
+                         trainable_ts=args.trainable_ts,
                          layer_type=mvnn_parameters['layer_type'],
                          target_max=mvnn_parameters['target_max'],
-                         lin_skip_connection=args.lin_skip_connection,
-                         dropout_prob=mvnn_parameters['dropout_prob'],
                          init_method=mvnn_parameters['init_method'],
                          random_ts=mvnn_parameters['random_ts'],
-                         trainable_ts=mvnn_parameters['trainable_ts'],
                          init_E=mvnn_parameters['init_E'],
                          init_Var=mvnn_parameters['init_Var'],
                          init_b=mvnn_parameters['init_b'],
@@ -485,24 +486,33 @@ def get_mixed_mvnn(args, input_shape_mono,input_shape_non_mono):
 umnn_parameters = {"num_embedding_layers": 1, "num_embedding_hiddens": 10, "num_main_hidden_layers" : 1, "num_main_hidden_nodes": 20, "n_out": 1,"nb_steps": 10 }
 
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
-    model = EmbeddingNet(in_embedding=input_shape, in_main=input_shape, out_embedding=input_shape, device=device, num_embedding_layers=umnn_parameters['num_embedding_layers'], num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'], num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'], num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'], nb_steps=umnn_parameters['nb_steps'])
+    model = EmbeddingNet(in_embedding=input_shape, 
+                         in_main=input_shape,
+                         out_embedding=input_shape,
+                         device=device,
+                         num_embedding_layers=umnn_parameters['num_embedding_layers'],
+                         num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'],
+                         num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'],
+                         num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'],
+                         nb_steps=umnn_parameters['nb_steps'])
+
     return model
+
+
 def get_cert(args, train_shape, cert_parameters):
-    if args.use_dummy:
-        model = MLP_relu_dummy(train_shape-1, 1,1,1,5,5,False, False)
-    else:
-        model = MLP_relu(train_shape, cert_parameters["output_parameters"], cert_parameters["num_hidden_layers"], cert_parameters["hidden_nodes"])
+    model = MLP_relu_dummy(mono_feature = train_shape-1,
+                            non_mono_feature=1,
+                            mono_sub_num = args.num_hidden_layers,
+                            non_mono_sub_num = args.num_hidden_layers,
+                            mono_hidden_num=args.num_hidden_units,
+                            non_mono_hidden_num=args.num_hidden_units,
+                            compress_non_mono=args.compress_non_mono,
+                            normalize_regression=args.normalize_regression)
     return model
 
 
 # TODOS:
-# define nn parameters -> use default for now (see mvnn_generic.py)
-# define epochs and test size
 # choose loss function -> use MSE for now
-# set training options -> write script
-# define optimizer + params
-# init w and biases
-# log metrics
 # store model
 # generate plots -> separate File
 def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0]):
@@ -526,7 +536,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
     train_loader = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=True)
 
-    optimizer = Adam(model.parameters())
+    optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay= args.l2_rate)
 
     wandb.watch(model, log="all")
     # this is only relevant for CERT where we add previous batch iterations
@@ -550,12 +560,12 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 n_dummy = 1
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
                 loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-                in_list, out_list = model.reg_forward(train_shape, train_shape - n_dummy)
+                in_list, out_list = model.reg_forward(train_shape -n_dummy, train_shape - n_dummy)
                 reg_loss = generate_regularizer(in_list, out_list)
                 loss_tot = loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-                #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
+                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(1,10, [1])))
@@ -566,12 +576,11 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
 
             else:
-                predictions = model.forward(batch[0])
+                predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
-
 
             seed_metrics_train.append([loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -596,8 +605,12 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
         for batch in val_loader:
             #batch = batch.to(device)
-            if args.model == "MVNN" or args.model == "UMNN":
+            if args.model == "MVNN": 
+                predictions = model.forward(batch[0][:,:-1])
+
+            elif args.model == "UMNN":
                 predictions = model.forward(batch[0])
+
             else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             val_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
@@ -645,6 +658,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     for batch in test_loader:
         #batch = batch.to(device)
         if args.model == "MVNN":
+            predictions = model.forward(batch[0][:,:-1])
+        elif args.model == "UMNN":
             predictions = model.forward(batch[0])
         else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
@@ -700,7 +715,6 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     infos[1] = epoch_num
     return model, metrics, infos
 
-#TODO Work on defining parameters smoothly
 def get_model(args, train_shape):
     ### define model ###
     if args.model == 'MVNN':
@@ -713,7 +727,7 @@ def get_model(args, train_shape):
 
     elif args.model == 'CERT':
         print("LOADING CERT")
-        model = get_cert(args, train_shape, cert_parameters)
+        model = get_cert(args=args, train_shape=train_shape, cert_parameters=cert_parameters)
     return  model
 
 def log_metrics(args, metrics):
@@ -825,7 +839,8 @@ def main(args=None):
     ## initialise wandb 
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
-    wandb.init(project="Monotone Experiment",id=run_id, group=group_id , reinit=True)
+
+    wandb.init(project="Mono HPO UMNN",id=run_id, group=group_id)
     wandb.log({"Started": True})
 
     # log  parameters 
@@ -838,13 +853,15 @@ def main(args=None):
     else:        
         wandb.config.update(cert_parameters, allow_val_change=True)
 
+    print("Num hidden layers ", args.num_hidden_units, " wandb config ", wandb.config.num_hidden_units ) 
     args.__dict__.update(wandb.config)
     wandb.config.update(args, allow_val_change=True)
+    print("Num hidden layers ", args.num_hidden_units, " wandb config ", wandb.config.num_hidden_units ) 
     
 
     #hard set to 0 non monotone variables 
-    if args.model == "MVNN":
-        args.use_dummy = False
+    #if args.model == "MVNN":
+    #    args.use_dummy = False
 
 
     # define metrics 
@@ -906,8 +923,8 @@ if __name__ == "__main__":
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    #os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
-    #os.chdir('/cluster/scratch/filles')
+    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    os.chdir('/cluster/scratch/filles')
     print(os.getcwd(), " : is the current working directory")
  
     #parser = init_parser()
@@ -916,30 +933,37 @@ if __name__ == "__main__":
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
     MODEL = "CERT"
+    #MODEL = "UMNN"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
     #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
     #wandb.config.update(args, allow_val_change=True)
+
     sweep_config = { 
-        "name": "Experiment1",
         "method": "random", 
-        "metric": {"goal": "minimize", "name": "val_loss"}, 
+        "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
-            "learning_rate": {"min": 0.0001, "max": 0.01},
-            "num_hidden_layers": { "values" : [1,2,3]},
-            "num_hidden_units": { "values": [10,40,160]},
-            "lin_skip_connection": {"values": ["True", "False"]},
+            "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
+            "num_hidden_layers": { "values" : [1,2,3,4,5]},
+            "num_hidden_units": { "values": [16,32,64,128,256]},
+            "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["lsvm"]}, 
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             "bidder_id":{ "values": [0]},
-            }
+            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            # MVNN Params
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #CERT Params
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
+            },
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Monotone Experiment")
-    wandb.agent(sweep_id, function=main, count=5)
 
-
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO Scratch")
+    wandb.agent(sweep_id, function=main, count=3)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)

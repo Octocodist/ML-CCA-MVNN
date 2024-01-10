@@ -57,7 +57,7 @@ def init_parser():
     #parser.add_argument("-sp","--use_sweep", type=bool, default=True, help="define whether we run in a sweep")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=2)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -1102,17 +1102,14 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    #sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    #wandb.agent(sweep_id, function=main, count=30)
-
-
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2 Test")
+    wandb.agent(sweep_id, function=main, count=30)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
     print("Testing classic Main") 
-    parser = init_parser()
-    args = parser.parse_args()
-    main(args)
+    #parser = init_parser()
+    #args = parser.parse_args()
+    #main(args)
     #exit()
-
