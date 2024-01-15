@@ -55,8 +55,8 @@ def init_parser():
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
-    parser.add_argument("--batch_size", help="batch size to use", default=64)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=300)
+    parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
@@ -164,8 +164,11 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 def load_dataset(args, num_train_data=100, train_percent=0, seed=100):
     # load dataset using pickle
     # parse filepath
-    filepath = "~/masterthesis/ML-CCA-MVNN/copmare_models/dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
+    abspath = "~/masterthesis/ML-CCA-MVNN/compare-models/"
+    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
+    print("filepath: ", filepath) 
     with open(filepath, "rb") as file:
+        print("loaded dataset") 
         dataset = pickle.load(file)
     X = dataset[0]
     y = dataset[1]
@@ -192,7 +195,7 @@ def load_dataset(args, num_train_data=100, train_percent=0, seed=100):
     print( "X_val_tensor shape is : " , X_val_tensor.size())
     print( "X_test_tensor shape is : " , X_test_tensor.size())
     if args.scale: 
-        max_val = max(torch.max(y_train_tensor).item()) 
+        max_val = torch.max(y_train_tensor).item() 
         print(max_val, " is max_val " ) 
         y_train_tensor = torch.div(y_train_tensor, max_val)
         y_val_tensor = torch.div(y_val_tensor, max_val)
@@ -515,7 +518,7 @@ def get_cert(args, train_shape, cert_parameters):
 # choose loss function -> use MSE for now
 # store model
 # generate plots -> separate File
-def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0]):
+def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batch=0, cumm_epoch=0, seed=100, infos=[0,0,0]):
     print("--Starting Training--")
     train_shape = train[0][0].shape[0]
     # metrics for regression
@@ -554,18 +557,19 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         for batch in train_loader:
             #batch = batch.to(device)
             batch_num +=1
+            reg_loss = 0 
+            cert_loss = 0 
 
             optimizer.zero_grad()
             if args.model == 'CERT':
                 n_dummy = 1
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
-                loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+                cert_loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 in_list, out_list = model.reg_forward(train_shape -n_dummy, train_shape - n_dummy)
                 reg_loss = generate_regularizer(in_list, out_list)
-                loss_tot = loss + model.lam * reg_loss
+                loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-                wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(1,10, [1])))
@@ -582,6 +586,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
                 model.transform_weights()
 
+            
+                #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
             seed_metrics_train.append([loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                        loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -598,6 +604,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        batch_num,
                        epoch_num, 
+                       reg_loss, 
+                       cert_loss,
                        ])
 
         ### Validation ###
@@ -793,7 +801,10 @@ def log_metrics(args, metrics):
                    "kendall_tau_statistics": mean_train[i,12],
                    "kendall_tau_p_val": mean_train[i,13],
                    "Batch_num_train": mean_train[i,14],
-                   "Epoch_train": mean_train[i,15]})
+                   "Epoch_train": mean_train[i,15],
+                   "Cert_regularizer": mean_train[i,16],
+                   "Cert_loss": mean_train[i,17],
+                   })
     for i in range(dims_val[1]):
         wandb.log({"val_loss_tot": mean_val[i,0],
                    "val_loss_mae": mean_val[i,1],
@@ -840,7 +851,7 @@ def main(args=None):
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
 
-    wandb.init(project="Mono HPO UMNN",id=run_id, group=group_id)
+    wandb.init(project="Mono HPO 1 14 24",id=run_id, group=group_id)
     wandb.log({"Started": True})
 
     # log  parameters 
@@ -853,10 +864,8 @@ def main(args=None):
     else:        
         wandb.config.update(cert_parameters, allow_val_change=True)
 
-    print("Num hidden layers ", args.num_hidden_units, " wandb config ", wandb.config.num_hidden_units ) 
     args.__dict__.update(wandb.config)
     wandb.config.update(args, allow_val_change=True)
-    print("Num hidden layers ", args.num_hidden_units, " wandb config ", wandb.config.num_hidden_units ) 
     
 
     #hard set to 0 non monotone variables 
@@ -923,16 +932,16 @@ if __name__ == "__main__":
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
-    os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
-    os.chdir('/cluster/scratch/filles')
+    #os.environ['WANDB_DIR'] = os.path.abspath("/cluster/scratch/filles/")
+    #os.chdir('/cluster/scratch/filles')
     print(os.getcwd(), " : is the current working directory")
  
     #parser = init_parser()
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    #MODEL = "MVNN"
-    MODEL = "CERT"
+    MODEL = "MVNN"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     print("Running model: ", MODEL)
 
@@ -947,23 +956,24 @@ if __name__ == "__main__":
             "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
             "num_hidden_layers": { "values" : [1,2,3,4,5]},
             "num_hidden_units": { "values": [16,32,64,128,256]},
+            "batch_size": { "values": [32,128,256]},
             "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["lsvm"]}, 
             "bidder_id":{ "values": [0]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            "lin_skip_connection": {"values": ["True", "False"]},
-            "trainable_ts": {"values": ["True", "False"]},
-            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"lin_skip_connection": {"values": ["True", "False"]},
+            #"trainable_ts": {"values": ["True", "False"]},
+            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO Scratch")
-    wandb.agent(sweep_id, function=main, count=3)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO 1 14 24")
+    wandb.agent(sweep_id, function=main, count=30)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
