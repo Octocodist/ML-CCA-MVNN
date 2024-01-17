@@ -51,11 +51,11 @@ def init_parser():
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=300)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -571,6 +571,25 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot.backward()
                 optimizer.step()
 
+                seed_metrics_train.append([loss_tot.item(),
+                           loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                           batch_num,
+                           epoch_num, 
+                           numpy.array(reg_loss.detach()), 
+                           numpy.array(cert_loss.detach()),
+                           ])
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(1,10, [1])))
 
@@ -578,6 +597,25 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 loss_tot.backward()
                 optimizer.step()
+                seed_metrics_train.append([loss_tot.item(),
+                           loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                           batch_num,
+                           epoch_num, 
+                           reg_loss, 
+                           cert_loss,
+                           ])
 
             else:
                 predictions = model.forward(batch[0][:,:-1])
@@ -585,28 +623,26 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot.backward()
                 optimizer.step()
                 model.transform_weights()
+                seed_metrics_train.append([loss_tot.item(),
+                           loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                           loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                           batch_num,
+                           epoch_num, 
+                           reg_loss, 
+                           cert_loss,
+                           ])
 
-            
-                #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
-            seed_metrics_train.append([loss_tot.item(),
-                       loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                       loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                       kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                       batch_num,
-                       epoch_num, 
-                       reg_loss, 
-                       cert_loss,
-                       ])
 
         ### Validation ###
         #print("START validation")
@@ -848,13 +884,19 @@ def main(args=None):
 
 
     ## initialise wandb 
-    group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
-    run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
+    run = wandb.init()
+    #wandb.log({"Started": True})
 
-    wandb.init(project="Mono HPO 1 14 24",id=run_id, group=group_id)
-    wandb.log({"Started": True})
+    args.__dict__.update(wandb.config)
+    wandb.config.update(args, allow_val_change=True)
 
     # log  parameters 
+    group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
+    run_id = group_id  + "Rand_id_"+ str(np.random.randint(300))
+
+    run.name = run_id
+    #run.group = group_id
+
     if args.model == "MVNN": 
         wandb.config.update(mvnn_parameters, allow_val_change=True)
 
@@ -863,9 +905,6 @@ def main(args=None):
 
     else:        
         wandb.config.update(cert_parameters, allow_val_change=True)
-
-    args.__dict__.update(wandb.config)
-    wandb.config.update(args, allow_val_change=True)
     
 
     #hard set to 0 non monotone variables 
@@ -879,30 +918,31 @@ def main(args=None):
 
 
     # TODO remove bidder id loop 
-    bidder_ids = [args.bidder_id]
-    for bidder in bidder_ids:
-        for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
-            wandb.log({"model": args.model, "dataset": args.dataset})
+    #bidder_ids = [args.bidder_id]
+    #for bidder in bidder_ids:
+    for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
+        wandb.log({"model": args.model, "dataset": args.dataset})
 
 
-            ### load dataset ###
-            train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-            train_shape = train[0][0].shape[0]
+        ### load dataset ###
+        train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
+        train_shape = train[0][0].shape[0]
 
-            print(train_shape, " is the train shape and seed is ", seed )
-            #print("--- Loaded dataset successfully ---")
+        print(train_shape, " is the train shape and seed is ", seed )
+        #print("--- Loaded dataset successfully ---")
 
-            ### define model ###
-            model = get_model(args, train_shape)
-            #print("--- Loaded model successfully ---")
+        ### define model ###
+        model = get_model(args, train_shape)
+        #print("--- Loaded model successfully ---")
 
 
-            ### train model ###
-            model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id= bidder, seed=seed, infos=infos)
-            print("--- Trained model successfully ---")
+        ### train model ###
+        model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id=args.bidder_id, seed=seed, infos=infos)
+        print("--- Trained model successfully ---")
 
-        log_metrics(args, metrics)
-        """
+    log_metrics(args, metrics)
+    wandb.finish()
+    """
             if args.model == "CERT":
                 pass
                 #    n_dummy = 1
@@ -920,11 +960,10 @@ def main(args=None):
                             print("Exiting because of too many trys in CERT")
                             mono_flag = True
                """ 
-        ### log metrics ###
-        #log_metrics(args, metrics)
+    ### log metrics ###
+    #log_metrics(args, metrics)
 
     
-    wandb.finish()
 
 if __name__ == "__main__":
     print("--Starting wandb sweep init-- ")
@@ -954,26 +993,26 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
-            "num_hidden_layers": { "values" : [1,2,3,4,5]},
+            "num_hidden_layers": { "values" : [1,2,3]},
             "num_hidden_units": { "values": [16,32,64,128,256]},
-            "batch_size": { "values": [32,128,256]},
+            "batch_size": { "values": [25,50,100]},
             "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["lsvm"]}, 
+            "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
-            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO 1 14 24")
-    wandb.agent(sweep_id, function=main, count=30)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO gsvm")
+    wandb.agent(sweep_id, function=main, count=50)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
@@ -982,5 +1021,5 @@ if __name__ == "__main__":
     #parser = init_parser()
     #args = parser.parse_args()
     #main(args)
-    #exit()
+    exit()
 
