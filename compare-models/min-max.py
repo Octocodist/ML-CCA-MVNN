@@ -21,9 +21,6 @@ from mvnns.mvnn import MVNN
 from mvnns.mvnn_generic import MVNN_GENERIC
 from generalized_UMNN.models.MultidimensionnalMonotonicNN import SlowDMonotonicNN
 
-from minmax.min_max_network import MonotoneMinMax
-
-
 import CertifiedMonotonicNetwork
 
 import torch
@@ -50,7 +47,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX"], default='MINMAX')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN"], default='MVNN')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -58,7 +55,7 @@ def init_parser():
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=1)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -89,12 +86,6 @@ def init_parser():
 
 #TODO: take this from a file
 ### default parameters ###
-minmax_parameters = {
-                     'num_hidden_units': 20,
-                     'num_groups': 4,
-                     'group_size': 20,
-                     'final_output_size': 10,
-                     }
 mvnn_parameters = {'num_hidden_layers': 1,
                     'num_hidden_units': 20,
                     'layer_type': 'MVNNLayerReLUProjected',
@@ -435,13 +426,7 @@ class MLP_relu_dummy(nn.Module):
         x = self.mono_fc_last(x)
         out_list.append(x)
         return in_list, out_list
-def get_minmax(args, input_shape):
-    # hard code for test
-    model = MonotoneMinMax(in_features= input_shape - 1,
-                           num_groups=args.num_groups,
-                           group_size=args.group_size,
-                           final_output_size=args.final_output_size)
-    return model
+
 
 def get_mvnn(args, input_shape,n_dummy=1):
     capacity_generic_goods = np.array([1 for _ in range(input_shape - 1)])
@@ -632,7 +617,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            cert_loss,
                            ])
 
-            elif args.model == "MVNN":
+            else:
                 predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 loss_tot.backward()
@@ -657,51 +642,25 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            reg_loss, 
                            cert_loss,
                            ])
-            elif args.model == "MINMAX":
-                predictions = model.forward(batch[0][:,:-1])
-                loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-                loss_tot.backward()
-                optimizer.step()
-                seed_metrics_train.append([loss_tot.item(),
-                           loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                           loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
-                           loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
-                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
-                           kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
-                           batch_num,
-                           epoch_num, 
-                           reg_loss, 
-                           cert_loss,
-                           ])
 
 
         ### Validation ###
+        #print("START validation")
         val_size = len(val)
         print(" val_size is :" , val_size)
         val_loader = torch.utils.data.DataLoader(val, batch_size=val_size, shuffle=True)
         for batch in tqdm(val_loader):
-
+            #batch = batch.to(device)
             if args.model == "MVNN": 
                 predictions = model.forward(batch[0][:,:-1])
 
             elif args.model == "UMNN":
                 predictions = model.forward(batch[0])
 
-            elif args.model == "CERT" :
+            else :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-
-            if args.model == "MINMAX": 
-                predictions = model.forward(batch[0][:,:-1])
-
             val_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
+            #print("Val loss is : " ,val_loss.item())
 
             seed_metrics_val.append([val_loss_tot.item(),
                        loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -720,27 +679,36 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                        batch_num,
                        epoch_num, 
                        ])
+            """
+            wandb.log({"val_loss": val_loss.item(),
+                       "val_loss_mean_absolute_error": loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "val_loss_mse": loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
+                       "val_loss_explained_variance_score": loss_evar(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_median_absolute_err": loss_medabs(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_r2": loss_r2(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_max_err": loss_maxerr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:,bidder_id],y_pred=predictions.squeeze(1).detach()).item(),
+                       "val_kendall_tau_statistics": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[0],
+                       "val_kendall_tau_p_val": kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
+                       "Batch_num":  batch_num,
+                       "Epoch":  epoch_num})
+            """
     print("END train and validation")
     print("Start Testing")
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
     for batch in tqdm(test_loader):
-        
-        mono_flag = False
-
+        #batch = batch.to(device)
         if args.model == "MVNN":
             predictions = model.forward(batch[0][:,:-1])
-
         elif args.model == "UMNN":
             predictions = model.forward(batch[0])
-
-        elif args.model == "CERT":
+        else:
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-            mono_flag = certify_neural_network(model, train_shape - 1)
-
-        if args.model == "MINMAX": 
-            predictions = model.forward(batch[0][:,:-1])
-
         test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
         #print("test loss is : ", test_loss.item())
         seed_metrics_test.append([test_loss_tot.item(),
@@ -759,8 +727,32 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                        kendalltau(batch[1][:,bidder_id],predictions.squeeze(1).detach())[1],
                        batch_num,
                        epoch_num, 
-                       mono_flag,
                        ])
+        """
+        wandb.log({"test_loss": test_loss.item(),
+                   "test_loss_mean_absolute_error": loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                   "test_loss_mse": loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
+                   "test_loss_explained_variance_score": loss_evar(y_true=batch[1][:, bidder_id],
+                                                                   y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_median_absolute_err": loss_medabs(y_true=batch[1][:, bidder_id],
+                                                                y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_r2": loss_r2(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_max_err": loss_maxerr(y_true=batch[1][:, bidder_id],
+                                                    y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_mean absolute_percentage_err": loss_mape(y_true=batch[1][:, bidder_id],
+                                                                       y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_tweedie_score": loss_d2tw(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_mean_pinball_loss": loss_mpl(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_pinball_score": loss_d2pl(y_true=batch[1][:, bidder_id],
+                                                           y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_loss_d2_absolute_err_score": loss_d2abserr(y_true=batch[1][:, bidder_id],
+                                                                    y_pred=predictions.squeeze(1).detach()).item(),
+                   "test_kendall_tau_statistics": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[0],
+                   "test_kendall_tau_p_val": kendalltau(batch[1][:, bidder_id], predictions.squeeze(1).detach())[1]})
+    print("End Testing")
+    """
 
     metrics[0].append(seed_metrics_train)
     metrics[1].append(seed_metrics_val)
@@ -782,13 +774,41 @@ def get_model(args, train_shape):
     elif args.model == 'CERT':
         print("LOADING CERT")
         model = get_cert(args=args, train_shape=train_shape, cert_parameters=cert_parameters)
-
-    elif args.model == 'MINMAX':
-        model = get_minmax(args, train_shape)
-
     return  model
 
 def log_metrics(args, metrics):
+    """
+    wandb.define_metric("Batch_num")
+    wandb.define_metric("Epoch")
+    wandb.define_metric("loss_tot", step_metric="Batch_num")
+    wandb.define_metric("loss_mse", step_metric="Batch_num")
+    wandb.define_metric("loss_mae", step_metric="Batch_num")
+    wandb.define_metric("loss_evar", step_metric="Batch_num")
+    wandb.define_metric("loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("loss_r2", step_metric="Batch_num")
+    wandb.define_metric("loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("loss_mape", step_metric="Batch_num")
+    wandb.define_metric("loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2pl", step_metric="Batch_num")
+    wandb.define_metric("loss_d2abserr", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_statistics", step_metric="Batch_num")
+    wandb.define_metric("kendall_tau_p_val", step_metric="Batch_num")
+    wandb.define_metric("val_loss_tot", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mse", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mae", step_metric="Batch_num")
+    wandb.define_metric("val_loss_evar", step_metric="Batch_num")
+    wandb.define_metric("val_loss_medabs", step_metric="Batch_num")
+    wandb.define_metric("val_loss_r2", step_metric="Batch_num")
+    wandb.define_metric("val_loss_maxerr", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mape", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2tw", step_metric="Batch_num")
+    wandb.define_metric("val_loss_mpl", step_metric="Batch_num")
+    wandb.define_metric("val_loss_d2pl", step_metric="Batch_num")
+    #wandb.define_metric("val_loss_d2abserr", step_metric="Batch_num")
+    #mets_array = np.array(metrics)
+    """
+
     
     mets_train = numpy.array([numpy.array(xi) for xi in metrics[0]])
     mets_val = numpy.array([numpy.array(xi) for xi in metrics[1]])
@@ -823,7 +843,6 @@ def log_metrics(args, metrics):
                    "Cert_regularizer": mean_train[i,16],
                    "Cert_loss": mean_train[i,17],
                    })
-
     for i in range(dims_val[1]):
         wandb.log({"val_loss_tot": mean_val[i,0],
                    "val_loss_mae": mean_val[i,1],
@@ -841,7 +860,6 @@ def log_metrics(args, metrics):
                    "val_kendall_tau_p_val": mean_val[i,13],
                    "Batch_num_val": mean_val[i,14],
                    "Epoch_val": mean_val[i,15]})
-
     for i in range(dims_test[1]):
         wandb.log({"test_loss_tot": mean_test[i,0],
                    "test_loss_mae": mean_test[i,1],
@@ -858,8 +876,7 @@ def log_metrics(args, metrics):
                    "test_kendall_tau_statistics": mean_test[i,12],
                    "test_kendall_tau_p_val": mean_test[i,13],
                    "Batch_num_test": mean_test[i,14],
-                   "Epoch_test": mean_test[i,15],
-                   "Mono_Flag": mean_test[i,16]})
+                   "Epoch_test": mean_test[i,15]})
 
 def main(args=None):
 
@@ -888,19 +905,26 @@ def main(args=None):
     elif args.model == "UMNN":    
         wandb.config.update(umnn_parameters, allow_val_change=True)
 
-    elif args.model == "CERT":        
+    else:        
         wandb.config.update(cert_parameters, allow_val_change=True)
     
-    elif args.model == "MINMAX":        
-        wandb.config.update(minmax_parameters, allow_val_change=True)
+
+    #hard set to 0 non monotone variables 
+    #if args.model == "MVNN":
+    #    args.use_dummy = False
+
 
     # define metrics 
     metrics = [[],[],[]]
     infos = [0,0,0] # cumulative batch and epoch last is bool if CERT is extended  
 
 
+    # TODO remove bidder id loop 
+    #bidder_ids = [args.bidder_id]
+    #for bidder in bidder_ids:
     for num, seed in enumerate(range(args.initial_seed, args.initial_seed + args.num_seeds)):
         wandb.log({"model": args.model, "dataset": args.dataset})
+
 
         ### load dataset ###
         train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
@@ -918,7 +942,6 @@ def main(args=None):
         model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id=args.bidder_id, seed=seed, infos=infos)
         print("--- Trained model successfully ---")
 
-    ### log metrics ###
     log_metrics(args, metrics)
     wandb.finish()
     """
@@ -939,18 +962,14 @@ def main(args=None):
                             print("Exiting because of too many trys in CERT")
                             mono_flag = True
                """ 
+    ### log metrics ###
+    #log_metrics(args, metrics)
 
-def start_agent(inputs):
-    print("Starting Agent!")
-    sweep_id = inputs[0]
-    count = inputs[1]
-    wandb.agent(sweep_id, function=main, count=count)
-    print("Agent Done")
-    return 0
     
 
 if __name__ == "__main__":
     print("--Starting wandb sweep init-- ")
+
 
     #os.environ['WANDB_SILENT'] = "true"
     os.environ['WANDB_MODE'] = "offline"
@@ -965,7 +984,6 @@ if __name__ == "__main__":
     #MODEL = "MVNN"
     MODEL = "CERT"
     #MODEL = "UMNN"
-    #MODEL = "MINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -984,7 +1002,7 @@ if __name__ == "__main__":
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["lsvm"]}, 
             "bidder_id":{ "values": [0]},
-            "epochs":{ "values": [200]},
+            "epochs":{ "values": [100]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
             #"lin_skip_connection": {"values": ["True", "False"]},
@@ -993,20 +1011,15 @@ if __name__ == "__main__":
             #CERT Params
             "compress_non_mono": {"values": ["True", "False"]},
             "normalize_regression": {"values": ["True", "False"]},
-            #MINMAX Params
-            #"num_groups": {"values": [4, 8, 16, 32]},
-            #"group_size": {"values": [5, 10, 15, 20]},
-            #"final_output_size": {"values": [10, 15, 20]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm 3 Models ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm parallel")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 15
-    #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 24
-    with mp.Pool(num_threads) as p : 
-        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
+    with mp.Pool(24) as p : 
+        p.map(wandb.agent(sweep_id, function=main, count=10))
+
+
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
