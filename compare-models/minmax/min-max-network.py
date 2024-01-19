@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-# The classic min-max network has a fixed layer size of 4
+# The classic minmax network has a fixed layer size of 4
 class Group(nn.Module):
     def __init__(self, in_features, out_features):
         super(Group, self).__init__()
