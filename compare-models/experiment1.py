@@ -944,6 +944,7 @@ def main(args=None):
 
     log_metrics(args, metrics)
     wandb.finish()
+    return 0 
     """
             if args.model == "CERT":
                 pass
@@ -964,7 +965,13 @@ def main(args=None):
                """ 
     ### log metrics ###
     #log_metrics(args, metrics)
-
+def start_agent(inputs):
+    print("Starting Agent!")
+    sweep_id = inputs[0]
+    count = inputs[1]
+    wandb.agent(sweep_id, function=main, count=count)
+    print("Agent Done")
+    return 0
     
 
 if __name__ == "__main__":
@@ -1014,11 +1021,12 @@ if __name__ == "__main__":
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm parallel")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm parallel test")
+    count = 15
     #wandb.agent(sweep_id, function=main, count=35)
     num_threads = 24
     with mp.Pool(num_threads) as p : 
-        p.map(wandb.agent(sweep_id, function=main, count=10),range(num_threads))
+        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
