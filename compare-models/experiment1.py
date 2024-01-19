@@ -1,5 +1,5 @@
 import os
-
+import multiprocessing as mp 
 import numpy
 import pickle
 import torch.nn as nn
@@ -55,7 +55,7 @@ def init_parser():
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=1)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
@@ -646,8 +646,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
         ### Validation ###
         #print("START validation")
-        val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
-        for batch in val_loader:
+        val_size = len(val)
+        print(" val_size is :" , val_size)
+        val_loader = torch.utils.data.DataLoader(val, batch_size=val_size, shuffle=True)
+        for batch in tqdm(val_loader):
             #batch = batch.to(device)
             if args.model == "MVNN": 
                 predictions = model.forward(batch[0][:,:-1])
@@ -699,7 +701,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     print("Start Testing")
         ### Test ###
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
-    for batch in test_loader:
+    for batch in tqdm(test_loader):
         #batch = batch.to(device)
         if args.model == "MVNN":
             predictions = model.forward(batch[0][:,:-1])
@@ -998,8 +1000,9 @@ if __name__ == "__main__":
             "batch_size": { "values": [25,50,100]},
             "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["gsvm"]}, 
+            "dataset": {"values":["lsvm"]}, 
             "bidder_id":{ "values": [0]},
+            "epochs":{ "values": [100]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
             "lin_skip_connection": {"values": ["True", "False"]},
@@ -1011,8 +1014,12 @@ if __name__ == "__main__":
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO gsvm")
-    wandb.agent(sweep_id, function=main, count=50)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm parallel")
+    #wandb.agent(sweep_id, function=main, count=35)
+    num_threads = 24
+    with mp.Pool(num_threads) as p : 
+        p.map(wandb.agent(sweep_id, function=main, count=10),range(num_threads))
+
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
