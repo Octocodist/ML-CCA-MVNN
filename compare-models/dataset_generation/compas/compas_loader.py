@@ -91,12 +91,12 @@ def load_data(path = 'data/compas_prepped.json', get_categorical_info=True):
     n = data.shape[0]
     n_train = int(n * .8)
     n_test = n - n_train
-
+    print(data.shape)
     replace_data = [
         ['African-American', 'Hispanic', 'Asian', 'Caucasian', 'Native American', 'Other'],
         ['Male', 'Female']
         ]
-    
+
     for row in replace_data:
         data = data.replace(row, range(len(row)))
 
