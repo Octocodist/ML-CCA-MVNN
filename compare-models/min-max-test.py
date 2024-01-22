@@ -962,8 +962,8 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    #MODEL = "MVNN"
-    MODEL = "CERT"
+    MODEL = "MVNN"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
     print("Running model: ", MODEL)
@@ -982,17 +982,17 @@ if __name__ == "__main__":
             "batch_size": { "values": [25,50,100]},
             "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["lsvm"]}, 
+            "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
             "epochs":{ "values": [200]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
-            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [4, 8, 16, 32]},
             #"group_size": {"values": [5, 10, 15, 20]},
