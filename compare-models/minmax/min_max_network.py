@@ -17,7 +17,6 @@ class MinMax(nn.Module):
         super(MinMax, self).__init__()
         self.bias = nn.Parameter(torch.ones(1))
         self.groups = nn.ModuleList([Group(in_features, group_size) for _ in range(num_groups)])
-        layers = []
         #for i in range(len(hidden_sizes) - 1):
         #    layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         #    layers.append(nn.ReLU())
@@ -31,7 +30,7 @@ class MinMax(nn.Module):
         x = torch.cat([x, self.bias], dim=1)
         group_outputs = [group(x) for group in self.groups]
         x = torch.cat(group_outputs, dim=1)
-        x = self.hidden_layers(x)
+        #x = self.hidden_layers(x)
         # max val has dim (batch_size, 1)
         #max_val, _ = torch.max(self.final_activation(self.final_layer(x)), dim=1, keepdim=True)
         max_val, _ = torch.max(self.final_layer(x), dim=1, keepdim=True)
@@ -42,11 +41,12 @@ class MinMax(nn.Module):
 class MonotoneGroup(nn.Module):
     def __init__(self, in_features, out_features, mono_mode):
         super(MonotoneGroup, self).__init__()
-        if mono_mode == 'exp':
+        self.mono_mode = mono_mode
+        if self.mono_mode == 'exp':
             self.trafo = torch.exp
-        elif mono_mode == 'x2':
+        elif self.mono_mode == 'x2':
             self.trafo = torch.square
-        elif mono_mode == 'weights':
+        elif self. mono_mode == 'weights':
             self.trafo = torch.nn.identity
         self.layer = nn.Linear(in_features, out_features)
 
@@ -57,9 +57,12 @@ class MonotoneGroup(nn.Module):
         return x
     def set_weights(self):
         # set all weights of the layer to be greater of equal to zero
-        weights = self.layer.weight.data
-        weights[weights < 0] = 0
-        self.layer.weight.data = weights
+        if self.mono_mode == 'weights':
+            weights = self.layer.weight.data
+            weights[weights < 0] = 0
+            self.layer.weight.data = weights
+        else :
+            pass
 
 
 
@@ -90,3 +93,8 @@ class MonotoneMinMax(nn.Module):
         x = self.hidden_layers(x_mono)
         max_val, _ = torch.max(self.final_layer(x), dim=1, keepdim=True)
         return max_val
+    def set_weights(self):
+        # set all weights of the layer to be greater of equal to zero
+        for group in self.mono_groups:
+            group.set_weights()
+
