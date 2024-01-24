@@ -22,6 +22,7 @@ from mvnns.mvnn_generic import MVNN_GENERIC
 from generalized_UMNN.models.MultidimensionnalMonotonicNN import SlowDMonotonicNN
 
 from minmax.min_max_network import MonotoneMinMax
+from minmax.min_max_network import MinMax 
 
 
 import CertifiedMonotonicNetwork
@@ -50,7 +51,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX"], default='MINMAX')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MONOMINMAX')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -77,6 +78,13 @@ def init_parser():
     # for CERT
     parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
     parser.add_argument("--normalize_regression", help="normalizing regression", type= bool, default=False)
+
+
+    # for MINMAX
+    parser.add_argument("--mono_mode", choices=["weights","x2","exp"], help="mono mode for minmax", type= str, default="exp")
+    parser.add_argument("--num_groups",  help="num groups for minmax", type= int, default=5)
+    parser.add_argument("--group_size",  help="group size for minmax", type= int, default=10)
+    parser.add_argument("--final_output_size",  help="final output size before last layer", type= int, default=5)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
     #parser.add_argument("--trainable_ts", help="trainable ts", default=True)
@@ -93,6 +101,12 @@ minmax_parameters = {
                      'num_hidden_units': 20,
                      'num_groups': 4,
                      'group_size': 20,
+                     'final_output_size': 10,
+                     }
+monominmax_parameters = {
+                     'mono_num_hidden_units': 20,
+                     'mono_num_groups': 4,
+                     'mono_group_size': 20,
                      'final_output_size': 10,
                      }
 mvnn_parameters = {'num_hidden_layers': 1,
@@ -435,9 +449,20 @@ class MLP_relu_dummy(nn.Module):
         x = self.mono_fc_last(x)
         out_list.append(x)
         return in_list, out_list
+
+
+def get_mono_minmax(args, input_shape):
+    # hard code for test
+    model = MonotoneMinMax(
+                           mono_mode=args.mono_mode,
+                           mono_in_features= input_shape - 1,
+                           mono_num_groups=args.num_groups,
+                           mono_group_size=args.group_size,
+                           final_output_size=args.final_output_size)
+    return model
 def get_minmax(args, input_shape):
     # hard code for test
-    model = MonotoneMinMax(in_features= input_shape - 1,
+    model = MinMax(in_features= input_shape - 1,
                            num_groups=args.num_groups,
                            group_size=args.group_size,
                            final_output_size=args.final_output_size)
@@ -657,11 +682,13 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            reg_loss, 
                            cert_loss,
                            ])
-            elif args.model == "MINMAX":
+            elif args.model == "MINMAX" or args.model == "MONOMINMAX":
                 predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 loss_tot.backward()
                 optimizer.step()
+                if args.model == "MONOMINMAX":
+                    model.set_weights()
                 seed_metrics_train.append([loss_tot.item(),
                            loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                            loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -698,7 +725,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             elif args.model == "CERT" :
                 predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
 
-            if args.model == "MINMAX": 
+            if args.model == "MINMAX" or args.model == "MONOMINMAX": 
                 predictions = model.forward(batch[0][:,:-1])
 
             val_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
@@ -738,7 +765,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
             mono_flag = certify_neural_network(model, train_shape - 1)
 
-        if args.model == "MINMAX": 
+        if args.model == "MINMAX" or args.model == "MONOMINMAX": 
             predictions = model.forward(batch[0][:,:-1])
 
         test_loss_tot = loss_mse(predictions.squeeze(1), batch[1][:, bidder_id])
@@ -785,6 +812,9 @@ def get_model(args, train_shape):
 
     elif args.model == 'MINMAX':
         model = get_minmax(args, train_shape)
+
+    elif args.model == 'MONOMINMAX':
+        model = get_mono_minmax(args, train_shape)
 
     return  model
 
@@ -894,6 +924,9 @@ def main(args=None):
     elif args.model == "MINMAX":        
         wandb.config.update(minmax_parameters, allow_val_change=True)
 
+    elif args.model == "MONOMINMAX":        
+        wandb.config.update(minmax_parameters, allow_val_change=True)
+
     # define metrics 
     metrics = [[],[],[]]
     infos = [0,0,0] # cumulative batch and epoch last is bool if CERT is extended  
@@ -962,10 +995,11 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
+    #MODEL = "MVNN"
     #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
+    MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -977,30 +1011,32 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
-            "num_hidden_layers": { "values" : [1,2,3]},
-            "num_hidden_units": { "values": [16,32,64,128,256]},
+            #"num_hidden_layers": { "values" : [1,2,3]},
+            #"num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [25,50,100]},
             "l2_rate": { "values": [0.0, 0.5, 1.0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["gsvm"]}, 
+            "dataset": {"values":["mrvm"]}, 
             "bidder_id":{ "values": [0]},
             "epochs":{ "values": [200]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            "lin_skip_connection": {"values": ["True", "False"]},
-            "trainable_ts": {"values": ["True", "False"]},
-            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"lin_skip_connection": {"values": ["True", "False"]},
+            #"trainable_ts": {"values": ["True", "False"]},
+            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
             #"compress_non_mono": {"values": ["True", "False"]},
             #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            #"num_groups": {"values": [4, 8, 16, 32]},
-            #"group_size": {"values": [5, 10, 15, 20]},
-            #"final_output_size": {"values": [10, 15, 20]},
+            "num_groups": {"values": [4, 8, 16, 32]},
+            "group_size": {"values": [5, 10, 15, 20]},
+            "final_output_size": {"values": [10, 15, 20]},
+            #MONOMINMAX Params
+            "mono_mode": { "values": ["exp","x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono HPO lsvm 3 Models ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono MINMAX Reg Test  ")
     #wandb.agent(sweep_id, function=main, count=35)
     count = 15
     #wandb.agent(sweep_id, function=main, count=35)
@@ -1010,7 +1046,7 @@ if __name__ == "__main__":
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
-    #print("Testing classic Main") 
+    print("Testing classic Main") 
     #parser = init_parser()
     #args = parser.parse_args()
     #main(args)
