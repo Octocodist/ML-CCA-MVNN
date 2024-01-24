@@ -65,6 +65,7 @@ def init_parser():
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
     parser.add_argument("--l2_rate", help="l2 norm", default=0.)
+    parser.add_argument("--num_training_points", help="num_training data ", default=50)
 
     ### model parameters ###
     parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=12)
@@ -184,7 +185,7 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 
 
 
-def load_dataset(args, num_train_data=100, train_percent=0, seed=100):
+def load_dataset(args, num_train_data=50, train_percent=0, seed=100):
     # load dataset using pickle
     # parse filepath
     abspath = "~/masterthesis/ML-CCA-MVNN/compare-models/"
@@ -936,7 +937,7 @@ def main(args=None):
         wandb.log({"model": args.model, "dataset": args.dataset})
 
         ### load dataset ###
-        train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
+        train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed)
         train_shape = train[0][0].shape[0]
 
         print(train_shape, " is the train shape and seed is ", seed )

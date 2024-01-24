@@ -45,7 +45,7 @@ def init_parser():
 
     ### experiment parameters ###
     parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
-    parser.add_argument("--dataset", help="dataset to use", default="blog", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
+    parser.add_argument("--dataset", help="dataset to use", default="compas", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog', 'compas'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN"], default='PUMNN' )
@@ -669,7 +669,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
                 model.transform_weights()
 
-            if args.dataset == "blog": 
+            if args.dataset == "blog" or args.dataset =="compas": 
                 seed_metrics_train.append([loss_tot.item(),
                                            loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
                                            loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -687,7 +687,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                            batch_num,
                                            epoch_num,
                                            ])
-            seed_metrics_train.append([loss_tot.item(),
+            else: 
+                seed_metrics_train.append([loss_tot.item(),
                                        loss_mae(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
                                        loss_mse(predictions.squeeze(1), batch[1][:, bidder_id]).item(),
                                        loss_evar(y_true=batch[1][:, bidder_id], y_pred=predictions.squeeze(1).detach()).item(),
@@ -723,7 +724,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 predictions = model.forward(batch[0], batch[1])
 
 
-            if args.dataset == "blog":
+            if args.dataset == "blog" or args.dataset == "compas":
                 val_loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
                 seed_metrics_val.append([val_loss.item(),
                                          loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -777,7 +778,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0], batch[1])
         elif args.model == "PUMNN":
             predictions = model.forward(batch[0], batch[1])
-        if args.dataset == "blog":
+        if args.dataset == "blog" or args.dataset =="compas":
             test_loss_tot = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
             seed_metrics_test.append([test_loss_tot.item(),
                                       loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -987,7 +988,7 @@ def main(args=None):
     ## initialise wandb 
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     run_id = group_id  + "Rand_id_"+ str(np.random.randint(2000))
-    wandb.init(project="Monotone Experiment",id=run_id, group=group_id)
+    wandb.init(project=" test delete",id=run_id, group=group_id)
     wandb.log({"Started": True})
 
     # log  parameters
@@ -1079,9 +1080,9 @@ if __name__ == "__main__":
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
     #MODEL = "CERT"
-    #MODEL = "PMVNN"
+    MODEL = "PMVNN"
     #MODEL = "PCERT"
-    MODEL = "PUMNN"
+    #MODEL = "PUMNN"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -1102,14 +1103,14 @@ if __name__ == "__main__":
             "bidder_id":{ "values": [0]},
             }
         }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2 Test")
-    wandb.agent(sweep_id, function=main, count=30)
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2 Test")
+    #wandb.agent(sweep_id, function=main, count=30)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
     print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
