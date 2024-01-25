@@ -125,25 +125,6 @@ mvnn_parameters = {'num_hidden_layers': 1,
                    'init_bias': 0.05,
                    'init_little_const': 0.1
                    }
-"""
-final_input_dim: int,
-                 final_num_hidden_layers: int,
-                 final_num_hidden_units: int,
-                 final_dropout_prob: float,
-                 final_layer_type: str,
-                 final_target_max: float,
-                 final_init_method: str,
-                 final_random_ts: tuple,
-                 final_trainable_ts: bool,
-                 final_init_E: float,
-                 final_init_Var: float,
-                 final_init_b: float,
-                 final_init_bias: float,
-                 final_init_little_const: float,
-                 final_lin_skip_connection: bool,
-                 final_capacity_generic_goods: np.array,
-                 final_output_inner_mvnn: int,
-                 """
 mixed_mvnn_parameters = {'num_hidden_layers': 1,
                    'num_hidden_units': 20,
                    'layer_type': 'MVNNLayerReLUProjected',
@@ -949,7 +930,7 @@ def main(args=None):
 
 
         ### train model ###
-        model, metrics, infos = train_model(args, model, train, val,test,  metrics, bidder_id=args.bidder_id, seed=seed, infos=infos)
+        model, metrics, infos = train_model(args, model, train, val, test, metrics, bidder_id=args.bidder_id, seed=seed, infos=infos)
         print("--- Trained model successfully ---")
 
     ### log metrics ###
