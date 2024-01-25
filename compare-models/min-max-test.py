@@ -55,7 +55,7 @@ def init_parser():
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
@@ -65,7 +65,7 @@ def init_parser():
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
     parser.add_argument("--l2_rate", help="l2 norm", default=0.)
-    parser.add_argument("--num_training_points", help="num_training data ", default=50)
+    parser.add_argument("--num_train_points", help="num_training data ", default=50)
 
     ### model parameters ###
     parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=12)
@@ -997,10 +997,10 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    #MODEL = "CERT"
+    MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
-    MODEL = "MONOMINMAX"
+    #MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -1012,34 +1012,35 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
-            #"num_hidden_layers": { "values" : [1,2,3]},
-            #"num_hidden_units": { "values": [16,32,64,128,256]},
-            "batch_size": { "values": [25,50,100]},
-            "l2_rate": { "values": [0.0, 0.5, 1.0]},
+            "num_hidden_layers": { "values" : [1,2,3,4]},
+            "num_hidden_units": { "values": [16,32,64,128,256]},
+            "batch_size": { "values": [50]},
+            "l2_rate": { "values": [0.0, 0.5, 1.0, 1.5]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["mrvm"]}, 
+            "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
             "epochs":{ "values": [200]},
+            "num_train_points":{ "values": [50]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
             #"lin_skip_connection": {"values": ["True", "False"]},
             #"trainable_ts": {"values": ["True", "False"]},
             #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            "num_groups": {"values": [4, 8, 16, 32]},
-            "group_size": {"values": [5, 10, 15, 20]},
-            "final_output_size": {"values": [10, 15, 20]},
+            #"num_groups": {"values": [4, 8, 16, 32]},
+            #"group_size": {"values": [5, 10, 15, 20]},
+            #"final_output_size": {"values": [10, 15, 20]},
             #MONOMINMAX Params
-            "mono_mode": { "values": ["exp","x2","weights"]},
+            #"mono_mode": { "values": ["exp","x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono MINMAX Reg Test  ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono gsvm 0 50 ")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 15
+    count = 21
     #wandb.agent(sweep_id, function=main, count=35)
     num_threads = 24
     with mp.Pool(num_threads) as p : 
@@ -1047,7 +1048,7 @@ if __name__ == "__main__":
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
-    print("Testing classic Main") 
+    #print("Testing classic Main") 
     #parser = init_parser()
     #args = parser.parse_args()
     #main(args)
