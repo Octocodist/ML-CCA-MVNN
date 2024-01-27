@@ -46,14 +46,18 @@ class MonotoneGroup(nn.Module):
 
     def forward(self, x):
         if self.mono_mode == 'exp':
-            x =  torch.exp(x)
+            for weight in self.layer.weight.data:
+                x = x * torch.exp(weight)
         elif self.mono_mode == 'x2':
-            x  = torch.square(x)
+            for weight in self.layer.weight.data:
+                x = x * torch.square(weight)
         elif self.mono_mode == 'weights':
-            #x = x 
-            pass
-        #x = self.trafo(x)
-        x = self.layer(x)
+            weights = self.layer.weight.data
+            weights[weights < 0] = 0
+            self.layer.weight.data = weights
+            for weight in self.layer.weight.data:
+                x = x * weight
+
         x = torch.min(x, dim=1, keepdim=True)[0]
         return x
     def set_weights(self):
