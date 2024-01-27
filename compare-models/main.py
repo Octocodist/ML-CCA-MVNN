@@ -50,7 +50,8 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="compas", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog', 'compas'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN"], default='PUMNN' )
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN", "MINMAX", "MONOMINMAX"],
+                        default='MONOMINMAX' )
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -58,7 +59,7 @@ def init_parser():
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=1)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     parser.add_argument("--l2_rate", help="l2 norm", default=0.)
@@ -250,7 +251,7 @@ def load_dataset(args, num_train_data=50, train_percent=0., seed=100):
 
 
         if args.scale: 
-            max_val = max(torch.max(y_train_tensor).item())
+            max_val =torch.max(y_train_tensor).item()
             print(max_val, " is max_val " ) 
             y_train_tensor = torch.div(y_train_tensor, max_val)
             y_val_tensor = torch.div(y_val_tensor, max_val)
@@ -568,7 +569,7 @@ def get_mono_minmax(args, input_shape):
     # hard code for test
     model = MonotoneMinMax(
         mono_mode=args.mono_mode,
-        mono_in_features= input_shape - 1,
+        mono_in_features= input_shape[0] - 1,
         mono_num_groups=args.num_groups,
         mono_group_size=args.group_size,
         final_output_size=args.final_output_size)
@@ -648,10 +649,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
             if args.model == 'PCERT':
                 predictions = model.forward(batch[0],batch[1])
-                loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
+                cert_loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
                 in_list, out_list = model.reg_forward(train_shape[1] + train_shape[0], train_shape[0])
                 reg_loss = generate_regularizer(in_list, out_list)
-                loss_tot = loss + model.lam * reg_loss
+                loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
                 #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
@@ -935,7 +936,7 @@ def get_model(args, train_shape):
         print("LOADING PCERT")
         model = get_pcert(args, train_shape, cert_parameters)
 
-    elif args.model== "PMVNN":
+    elif args.model == "PMVNN":
         print("LOADING PMVNN")
         model = get_mvnn_partial(args, train_shape, pmvnn_parameters)
 
@@ -950,6 +951,10 @@ def get_model(args, train_shape):
     elif args.model == 'MONOMINMAX':
         print("LOADING MONOMINMAX")
         model = get_mono_minmax(args, train_shape)
+    else: 
+        print( "ERROR WRONG MODEL: ", args.model)
+        model = None
+        
 
     return model
 
@@ -987,7 +992,7 @@ def log_metrics(args, metrics):
                    "Epoch_train": mean_train[i,15],
                    "Cert_regularizer": mean_train[i, 16],
                    "Cert_loss": mean_train[i, 17],
-                   ]}
+                   })
     for i in range(dims_val[1]):
         wandb.log({"val_loss_tot": mean_val[i,0],
                    "val_loss_mae": mean_val[i,1],
@@ -1174,18 +1179,16 @@ if __name__ == "__main__":
             "mono_mode": { "values": ["exp","x2","weights"]},
         },
     }
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono MINMAX Reg Test  ")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 15
-    #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 24
-    with mp.Pool(num_threads) as p :
-        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
+    #count = 15
+    #num_threads = 24
+    #with mp.Pool(num_threads) as p :
+    #    p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
     print("Testing classic Main")
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     #exit()
 
 

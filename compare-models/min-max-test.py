@@ -992,30 +992,30 @@ if __name__ == "__main__":
         "method": "random", 
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
-            "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
+            "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
             "num_hidden_layers": { "values" : [1,2,3,4]},
             "num_hidden_units": { "values": [16,32,64,128,256]},
-            "batch_size": { "values": [50]},
-            "l2_rate": { "values": [0.0, 0.5, 1.0, 1.5]},
+            "batch_size": { "values": [10, 50]},
+            "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
-            "epochs":{ "values": [200]},
+            "epochs":{ "values": [100, 200, 400]},
             "num_train_points":{ "values": [50]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
-            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
             "compress_non_mono": {"values": ["True", "False"]},
             "normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            #"num_groups": {"values": [4, 8, 16, 32]},
-            #"group_size": {"values": [5, 10, 15, 20]},
+            "num_groups": {"values": [32, 64, 128, 256]},
+            "group_size": {"values": [8, 16, 32, 64, 128]},
             #"final_output_size": {"values": [10, 15, 20]},
             #MONOMINMAX Params
-            #"mono_mode": { "values": ["exp","x2","weights"]},
+            "mono_mode": { "values": ["exp","x2","weights"]},
             },
         }
 
@@ -1026,6 +1026,7 @@ if __name__ == "__main__":
     num_threads = 24
     with mp.Pool(num_threads) as p : 
         p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
+
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 

@@ -60,8 +60,8 @@ class MVNNLayerReLUProjected(nn.Linear):
         self.weight.data.clamp_(min=0)
         if self.use_brelu:
             self.ts.data.clamp_(min=0)
-        if self.bias is not None:
-            self.bias.data.clamp_(max=0)
+        #if self.bias is not None:
+        #    self.bias.data.clamp_(max=0)
 
     def weight_init(self,
                     method,
