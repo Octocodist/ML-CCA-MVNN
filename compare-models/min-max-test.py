@@ -75,6 +75,7 @@ def init_parser():
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
+    parser.add_argument("--dropout_decay", help="dropout decay factor", default=0.97)
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
     # for CERT
     parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
@@ -591,7 +592,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-
+                
                 seed_metrics_train.append([loss_tot.item(),
                            loss_mae(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
                            loss_mse(predictions.squeeze(1),batch[1][:,bidder_id]).item(),
@@ -690,6 +691,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            reg_loss, 
                            cert_loss,
                            ])
+           #model.decay_dropout(rate=args.dropout_decay)
 
 
         ### Validation ###
