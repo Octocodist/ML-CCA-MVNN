@@ -4,14 +4,19 @@ from torch.autograd import Function as Function
 
 # The classic minmax network has a fixed layer size of 4
 class Group(nn.Module):
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, dropout_prob=0.):
         super(Group, self).__init__()
         self.layer = nn.Linear(in_features, out_features)
+        self.dropouts = nn.Dropout(p=dropout_prob)
 
     def forward(self, x):
         x = self.layer(x)
+        x = self.dropouts(x)
         x = torch.min(x, dim=1, keepdim=True)[0]
         return x
+    def dropout_decay(self, decay):
+        # decay the dropout probability
+        self.dropouts.p = self.dropouts.p * decay
 
 class MinMax(nn.Module):
     def __init__(self, in_features, num_groups, group_size, final_output_size=5):
@@ -51,10 +56,11 @@ class Exp(Function):
 #output = Exp.apply(input)
 
 class MonotoneGroup(nn.Module):
-    def __init__(self, in_features, out_features, mono_mode):
+    def __init__(self, in_features, out_features, mono_mode, dropout_prob=0.):
         super(MonotoneGroup, self).__init__()
         self.mono_mode = mono_mode
         self.layer = nn.Linear(in_features, out_features)
+        self.dropouts = nn.Dropout(p=dropout_prob)
 
     def forward(self, x):
 
@@ -72,10 +78,15 @@ class MonotoneGroup(nn.Module):
             weights[weights < 0] = 0
             self.layer.weight.data = weights
             x = self.layer(x)
-            #for weight in self.layer.weight.data:
-            #    x = x * weight
 
+        x = self.dropouts(x)
         x = torch.min(x, dim=1, keepdim=True)[0]
+
+
+    def dropout_decay(self, decay):
+        # decay the dropout probability
+        self.dropouts.p = self.dropouts.p * decay
+
 
         return x
     def set_weights(self):
@@ -91,17 +102,22 @@ class MonotoneGroup(nn.Module):
 # TOD Add Droupout
 
 class MonotoneMinMax(nn.Module):
-    def __init__(self, mono_mode, mono_in_features, mono_num_groups, mono_group_size, non_mono_in_features= 0 , non_mono_num_groups = 0, non_mono_group_size = 0 ):
+    def __init__(self, mono_mode, mono_in_features, mono_num_groups, mono_group_size, non_mono_in_features=0, non_mono_num_groups=0, non_mono_group_size=0, dropout_prob= 0.):
         super(MonotoneMinMax, self).__init__()
+        # set this if only mono input features
+        if non_mono_in_features > 0:
+            self.non_mono_flag = True
+        else:
+            self.non_mono_flag = False
         self.mono_mode = mono_mode
         self.mono_bias = nn.Parameter(torch.ones(1))
-        self.mono_groups = nn.ModuleList([MonotoneGroup(mono_in_features, mono_group_size, mono_mode) for _ in range(mono_num_groups)])
+        self.mono_groups = nn.ModuleList([MonotoneGroup(mono_in_features, mono_group_size, mono_mode, dropout_prob) for _ in range(mono_num_groups)])
         self.final_input_size = mono_num_groups
-        if non_mono_in_features > 0:
+
+        if self.non_mono_flag:
             self.non_mono_bias = nn.Parameter(torch.ones(1))
             self.non_mono_groups = nn.ModuleList([Group(non_mono_in_features, non_mono_group_size) for _ in range(non_mono_num_groups)])
             self.final_input_size += non_mono_num_groups
-
         #self.final_layer = nn.Linear(self.final_input_size, final_output_size)
 
     def forward(self, x_mono, x_non_mono=None):
@@ -122,4 +138,11 @@ class MonotoneMinMax(nn.Module):
         # set all weights of the layer to be greater of equal to zero
         for group in self.mono_groups:
             group.set_weights()
+    def dropout_decay(self, decay):
+        # decay the dropout probability
+        for group in self.mono_groups:
+            group.dropout_decay(decay)
+        if self.non_mono_flag:
+            for group in self.non_mono_groups:
+                group.dropout_decay(decay)
 

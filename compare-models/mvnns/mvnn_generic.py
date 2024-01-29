@@ -40,23 +40,21 @@ class MVNN_GENERIC(nn.Module):
         self.layers = []
 
         # NEW: Generic Transformation with requires_grad=False
-        #------------------------
-        generic_trafo_layer = nn.Linear(in_features = input_dim,
-                                        out_features = input_dim,
-                                        bias = False
+        # ------------------------
+        generic_trafo_layer = nn.Linear(in_features=input_dim,
+                                        out_features=input_dim,
+                                        bias=False
                                         )
-        
-        generic_trafo_layer_weight = np.diag(1/self.capacity_generic_goods)
+
+        generic_trafo_layer_weight = np.diag(1 / self.capacity_generic_goods)
         generic_trafo_layer_weight = generic_trafo_layer_weight.astype(np.float32)
         generic_trafo_layer.weight.data = torch.from_numpy(generic_trafo_layer_weight)
 
         for param in generic_trafo_layer.parameters():
             param.requires_grad = False
 
-
         self.layers.append(generic_trafo_layer)
-        #------------------------
-
+        # ------------------------
 
         fc1 = fc_layer(input_dim,
                        num_hidden_units,
@@ -140,6 +138,10 @@ class MVNN_GENERIC(nn.Module):
         for dropout in self.dropouts:
             dropout.p = dropout_prob
 
+    def dropout_decay(self, rate):
+        for dropout in self.dropouts:
+            dropout.p *= rate
+
     def transform_weights(self):
         for layer in self.layers:
             if hasattr(layer, 'transform_weights'):
@@ -147,7 +149,6 @@ class MVNN_GENERIC(nn.Module):
         if hasattr(self.output_layer, 'transform_weights'):
             self.output_layer.transform_weights()
 
-    
     def print_parameters(self):
         i = 0
         for layer in self.layers:
@@ -168,8 +169,8 @@ class MVNN_GENERIC(nn.Module):
         print(f'Shape: {self.output_layer.weight.data.shape}')
         print(f'Values: {self.output_layer.weight.data}')
         if self.output_layer.bias is not None:
-                print('output_layer.bias.bias')
-                print(f'Shape: {self.output_layer.bias.data.shape}')
-                print(f'Values: {self.output_layer.bias.data}')
+            print('output_layer.bias.bias')
+            print(f'Shape: {self.output_layer.bias.data.shape}')
+            print(f'Values: {self.output_layer.bias.data}')
         for name, param in self.output_layer.named_parameters():
-                print(f'{name} requires_grad={param.requires_grad}')
+            print(f'{name} requires_grad={param.requires_grad}')

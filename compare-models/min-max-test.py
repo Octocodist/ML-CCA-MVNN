@@ -343,11 +343,13 @@ class MLP_relu(nn.Module):
 
 class MLP_relu_dummy(nn.Module):
     def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
-                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
+                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False, dropout_prob=0.):
         super(MLP_relu_dummy, self).__init__()
         self.lam = 10
         self.normalize_regression = normalize_regression
         self.compress_non_mono = compress_non_mono
+        self.mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(mono_sub_num)])
+        self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(non_mono_sub_num)])
         if compress_non_mono:
             self.non_mono_feature_extractor = nn.Linear(non_mono_feature, 10, bias=True)
             self.mono_fc_in = nn.Linear(mono_feature + 10, mono_hidden_num, bias=True)
@@ -381,9 +383,11 @@ class MLP_relu_dummy(nn.Module):
         for i in range(int(len(self.mono_submods_out))):
             x = self.mono_submods_out[i](x)
             x = F.hardtanh(x, min_val=0.0, max_val=1.0)
+            x = self.mono_dropouts[i](x)
 
             y = self.non_mono_submods_out[i](y)
             y = F.hardtanh(y, min_val=0.0, max_val=1.0)
+            y = self.non_mono_dropouts[i](y)
 
             x = self.mono_submods_in[i](torch.cat([x, y], dim=1))
             x = F.relu(x)
@@ -430,7 +434,12 @@ class MLP_relu_dummy(nn.Module):
         x = self.mono_fc_last(x)
         out_list.append(x)
         return in_list, out_list
-
+    def dropout_decay(self, decay):
+        # decay the dropout probability
+        for i in range(len(self.mono_dropouts)):
+            self.mono_dropouts[i].p = self.mono_dropouts[i].p * decay
+        for i in range(len(self.non_mono_dropouts)):
+            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * decay
 
 def get_mono_minmax(args, input_shape):
     # hard code for test
@@ -439,6 +448,7 @@ def get_mono_minmax(args, input_shape):
                            mono_in_features= input_shape - 1,
                            mono_num_groups=args.num_groups,
                            mono_group_size=args.group_size,
+                           dropout_prob=args.dropout_prob,
                            )
     return model
 
@@ -532,7 +542,9 @@ def get_cert(args, train_shape, cert_parameters):
                             mono_hidden_num=args.num_hidden_units,
                             non_mono_hidden_num=args.num_hidden_units,
                             compress_non_mono=args.compress_non_mono,
-                            normalize_regression=args.normalize_regression)
+                            normalize_regression=args.normalize_regression,
+                            dropout_prob=args.dropout_prob,
+                           )
     return model
 
 
@@ -664,6 +676,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            reg_loss, 
                            cert_loss,
                            ])
+                model.dropout_decay(rate=args.dropout_decay)
             elif args.model == "MINMAX" or args.model == "MONOMINMAX":
                 predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
