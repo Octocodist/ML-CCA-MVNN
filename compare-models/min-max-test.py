@@ -1001,7 +1001,7 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    MODEL = "CERT"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
     #MODEL = "MONOMINMAX"
@@ -1031,8 +1031,8 @@ if __name__ == "__main__":
             #"lin_skip_connection": {"values": ["True", "False"]},
             #"trainable_ts": {"values": ["True", "False"]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [32, 64, 128, 256]},
             #"group_size": {"values": [8, 16, 32, 64, 128]},
