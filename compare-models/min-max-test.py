@@ -51,7 +51,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MONOMINMAX')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MVNN')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -74,7 +74,7 @@ def init_parser():
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
-    parser.add_argument("--dropout_prob", help="dropout probability", default=0)
+    parser.add_argument("--dropout_prob", help="dropout probability", default=0.)
     parser.add_argument("--dropout_decay", help="dropout decay factor", default=0.97)
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
     # for CERT
@@ -88,7 +88,7 @@ def init_parser():
     parser.add_argument("--group_size",  help="group size for minmax", type= int, default=11)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
-    #parser.add_argument("--trainable_ts", help="trainable ts", default=True)
+    parser.add_argument("--trainable_ts", help="trainable ts", default=True)
     #parser.add_argument("--init_E", help="init E", default=1)
     #parser.add_argument("--init_Var", help="init Var", default=0.09)
     #parser.add_argument("--init_b", help="init b", default=0.05)
@@ -579,6 +579,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     # this is only relevant for CERT where we add previous batch iterations
     batch_num = 0 
     epoch_num = 0
+    #solely for tracking
+    curr_dropout = args.dropout_prob
     if infos[2] == 1:
         batch_num = infos[0] 
         epoch_num = infos[1]
@@ -623,6 +625,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            epoch_num, 
                            numpy.array(reg_loss.detach()), 
                            numpy.array(cert_loss.detach()),
+                           curr_dropout,
                            ])
             elif args.model == 'UMNN':
                 model.set_steps(int(torch.randint(1,10, [1])))
@@ -649,6 +652,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            epoch_num, 
                            reg_loss, 
                            cert_loss,
+                           curr_dropout,
                            ])
 
             elif args.model == "MVNN":
@@ -675,6 +679,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            epoch_num, 
                            reg_loss, 
                            cert_loss,
+                           curr_dropout,
                            ])
                 model.dropout_decay(rate=args.dropout_decay)
             elif args.model == "MINMAX" or args.model == "MONOMINMAX":
@@ -703,8 +708,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            epoch_num, 
                            reg_loss, 
                            cert_loss,
+                           curr_dropout,
                            ])
-           #model.decay_dropout(rate=args.dropout_decay)
+                model.decay_dropout(rate=args.dropout_decay)
+                curr_dropout *= args.dropout_decay
 
 
         ### Validation ###
@@ -849,6 +856,7 @@ def log_metrics(args, metrics):
                    "Epoch_train": mean_train[i,15],
                    "Cert_regularizer": mean_train[i,16],
                    "Cert_loss": mean_train[i,17],
+                   "Dropout": mean_train[i,18],
                    })
 
     for i in range(dims_val[1]):
@@ -993,10 +1001,10 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    #MODEL = "CERT"
+    MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
-    MODEL = "MONOMINMAX"
+    #MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -1008,47 +1016,46 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
-            #"num_hidden_layers": { "values" : [1,2,3,4]},
-            #"num_hidden_units": { "values": [16,32,64,128,256]},
+            "num_hidden_layers": { "values" : [1,2,3,4]},
+            "num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
-            #"epochs":{ "values": [100, 200, 400]},
-            "epochs":{ "values": [10]},
+            "epochs":{ "values": [100, 200, 400]},
             "num_train_points":{ "values": [50]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
             #"lin_skip_connection": {"values": ["True", "False"]},
             #"trainable_ts": {"values": ["True", "False"]},
-            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            "num_groups": {"values": [32, 64, 128, 256]},
-            "group_size": {"values": [8, 16, 32, 64, 128]},
+            #"num_groups": {"values": [32, 64, 128, 256]},
+            #"group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
             #"mono_mode": { "values": ["exp"]},
-            "mono_mode": { "values": ["exp","x2","weights"]},
+            #"mono_mode": { "values": ["exp","x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Minmax test")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models decay full")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 10
+    count = 15
     #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 1 
-    #with mp.Pool(num_threads) as p : 
-    #    p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
+    num_threads = 24 
+    with mp.Pool(num_threads) as p : 
+        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
     #print("Testing classic Main") 
-    parser = init_parser()
-    args = parser.parse_args()
-    main(args)
+    #parser = init_parser()
+    #args = parser.parse_args()
+    #main(args)
     exit()
 

@@ -78,9 +78,10 @@ class MonotoneGroup(nn.Module):
             weights[weights < 0] = 0
             self.layer.weight.data = weights
             x = self.layer(x)
-
         x = self.dropouts(x)
         x = torch.min(x, dim=1, keepdim=True)[0]
+
+        return x 
 
 
     def dropout_decay(self, decay):
