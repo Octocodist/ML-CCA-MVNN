@@ -60,7 +60,7 @@ def init_parser():
 
     ### training parameters ###
     parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
-    parser.add_argument("--batch_size", help="batch size to use", default=128)
+    parser.add_argument("--batch_size", help="batch size to use", default=50)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     #parser.add_argument("--loss", help="ltenary operator expression c++oss function to use", default="mse")
     #parser.add_argument("--optimizer", help="optimizer to use", default="adam")
@@ -82,10 +82,9 @@ def init_parser():
 
 
     # for MINMAX
-    parser.add_argument("--mono_mode", choices=["weights","x2","exp"], help="mono mode for minmax", type= str, default="exp")
+    parser.add_argument("--mono_mode", choices=["weights","x2","exp"], help="mono mode for minmax", type= str, default="weights")
     parser.add_argument("--num_groups",  help="num groups for minmax", type= int, default=5)
-    parser.add_argument("--group_size",  help="group size for minmax", type= int, default=10)
-    parser.add_argument("--final_output_size",  help="final output size before last layer", type= int, default=5)
+    parser.add_argument("--group_size",  help="group size for minmax", type= int, default=11)
     #parser.add_argument("--init_method", help="initialization method", default="custom")
     #parser.add_argument("--random_ts", help="random ts", default=[0,1])
     #parser.add_argument("--trainable_ts", help="trainable ts", default=True)
@@ -108,7 +107,6 @@ monominmax_parameters = {
                      'mono_num_hidden_units': 20,
                      'mono_num_groups': 4,
                      'mono_group_size': 20,
-                     'final_output_size': 10,
                      }
 mvnn_parameters = {'num_hidden_layers': 1,
                     'num_hidden_units': 20,
@@ -440,8 +438,9 @@ def get_mono_minmax(args, input_shape):
                            mono_in_features= input_shape - 1,
                            mono_num_groups=args.num_groups,
                            mono_group_size=args.group_size,
-                           final_output_size=args.final_output_size)
+                           )
     return model
+
 def get_minmax(args, input_shape):
     # hard code for test
     model = MinMax(in_features= input_shape - 1,
@@ -667,6 +666,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             elif args.model == "MINMAX" or args.model == "MONOMINMAX":
                 predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
+
                 loss_tot.backward()
                 optimizer.step()
                 if args.model == "MONOMINMAX":
@@ -978,10 +978,10 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    MODEL = "CERT"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
-    #MODEL = "MONOMINMAX"
+    MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -993,46 +993,47 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
-            "num_hidden_layers": { "values" : [1,2,3,4]},
-            "num_hidden_units": { "values": [16,32,64,128,256]},
+            #"num_hidden_layers": { "values" : [1,2,3,4]},
+            #"num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
             "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
-            "epochs":{ "values": [100, 200, 400]},
+            #"epochs":{ "values": [100, 200, 400]},
+            "epochs":{ "values": [10]},
             "num_train_points":{ "values": [50]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            "lin_skip_connection": {"values": ["True", "False"]},
-            "trainable_ts": {"values": ["True", "False"]},
-            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"lin_skip_connection": {"values": ["True", "False"]},
+            #"trainable_ts": {"values": ["True", "False"]},
+            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             "num_groups": {"values": [32, 64, 128, 256]},
             "group_size": {"values": [8, 16, 32, 64, 128]},
-            #"final_output_size": {"values": [10, 15, 20]},
             #MONOMINMAX Params
+            #"mono_mode": { "values": ["exp"]},
             "mono_mode": { "values": ["exp","x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Mono gsvm 0 50 ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Minmax test")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 21
+    count = 10
     #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 24
-    with mp.Pool(num_threads) as p : 
-        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
+    num_threads = 1 
+    #with mp.Pool(num_threads) as p : 
+    #    p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
     #print("Testing classic Main") 
-    #parser = init_parser()
-    #args = parser.parse_args()
-    #main(args)
+    parser = init_parser()
+    args = parser.parse_args()
+    main(args)
     exit()
 
