@@ -138,7 +138,7 @@ class MVNN_GENERIC(nn.Module):
         for dropout in self.dropouts:
             dropout.p = dropout_prob
 
-    def dropout_decay(self, rate):
+    def decay_dropout(self, rate):
         for dropout in self.dropouts:
             dropout.p *= rate
 

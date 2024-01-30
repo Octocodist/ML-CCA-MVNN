@@ -88,8 +88,6 @@ class MonotoneGroup(nn.Module):
         # decay the dropout probability
         self.dropouts.p = self.dropouts.p * decay
 
-
-        return x
     def set_weights(self):
         # set all weights of the layer to be greater of equal to zero
         if self.mono_mode == 'weights':
@@ -139,11 +137,11 @@ class MonotoneMinMax(nn.Module):
         # set all weights of the layer to be greater of equal to zero
         for group in self.mono_groups:
             group.set_weights()
-    def dropout_decay(self, decay):
+    def decay_dropout(self, rate):
         # decay the dropout probability
         for group in self.mono_groups:
-            group.dropout_decay(decay)
+            group.dropout_decay(rate)
         if self.non_mono_flag:
             for group in self.non_mono_groups:
-                group.dropout_decay(decay)
+                group.dropout_decay(rate)
 

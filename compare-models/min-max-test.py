@@ -51,7 +51,7 @@ def init_parser():
     parser.add_argument("--dataset", help="dataset to use", default="lsvm", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
-    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MVNN')
+    parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MONOMINMAX')
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
@@ -348,8 +348,10 @@ class MLP_relu_dummy(nn.Module):
         self.lam = 10
         self.normalize_regression = normalize_regression
         self.compress_non_mono = compress_non_mono
+
         self.mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(mono_sub_num)])
         self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(non_mono_sub_num)])
+
         if compress_non_mono:
             self.non_mono_feature_extractor = nn.Linear(non_mono_feature, 10, bias=True)
             self.mono_fc_in = nn.Linear(mono_feature + 10, mono_hidden_num, bias=True)
@@ -434,12 +436,12 @@ class MLP_relu_dummy(nn.Module):
         x = self.mono_fc_last(x)
         out_list.append(x)
         return in_list, out_list
-    def dropout_decay(self, decay):
-        # decay the dropout probability
+    def decay_dropout(self, rate):
+        # rate the dropout probability
         for i in range(len(self.mono_dropouts)):
-            self.mono_dropouts[i].p = self.mono_dropouts[i].p * decay
+            self.mono_dropouts[i].p = self.mono_dropouts[i].p * rate
         for i in range(len(self.non_mono_dropouts)):
-            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * decay
+            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * rate
 
 def get_mono_minmax(args, input_shape):
     # hard code for test
@@ -601,7 +603,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 n_dummy = 1
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
                 cert_loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-                in_list, out_list = model.reg_forward(train_shape -n_dummy, train_shape - n_dummy)
+                #in_list, out_list = model.reg_forward(train_shape - 1, train_shape - 1)
+                in_list, out_list = model.reg_forward(train_shape , train_shape)
                 reg_loss = generate_regularizer(in_list, out_list)
                 loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
@@ -681,7 +684,6 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            cert_loss,
                            curr_dropout,
                            ])
-                model.dropout_decay(rate=args.dropout_decay)
             elif args.model == "MINMAX" or args.model == "MONOMINMAX":
                 predictions = model.forward(batch[0][:,:-1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
@@ -710,8 +712,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                            cert_loss,
                            curr_dropout,
                            ])
-                model.decay_dropout(rate=args.dropout_decay)
-                curr_dropout *= args.dropout_decay
+            model.decay_dropout(rate=args.dropout_decay)
+            curr_dropout = curr_dropout*args.dropout_decay
 
 
         ### Validation ###
@@ -1000,7 +1002,7 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    #MODEL = "MVNN"
+    MODEL = "MVNN"
     #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
@@ -1028,8 +1030,8 @@ if __name__ == "__main__":
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
             #CERT Params
             #"compress_non_mono": {"values": ["True", "False"]},
             #"normalize_regression": {"values": ["True", "False"]},
@@ -1042,7 +1044,7 @@ if __name__ == "__main__":
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models decay full")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models 30 1")
     #wandb.agent(sweep_id, function=main, count=35)
     count = 15
     #wandb.agent(sweep_id, function=main, count=35)
