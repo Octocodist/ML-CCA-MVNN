@@ -603,8 +603,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 n_dummy = 1
                 predictions = model.forward(batch[0][:,:-n_dummy], batch[0][:,-n_dummy:])
                 cert_loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
-                #in_list, out_list = model.reg_forward(train_shape - 1, train_shape - 1)
-                in_list, out_list = model.reg_forward(train_shape , train_shape)
+                in_list, out_list = model.reg_forward(train_shape - 1, train_shape - 1)
+                #in_list, out_list = model.reg_forward(train_shape , train_shape)
                 reg_loss = generate_regularizer(in_list, out_list)
                 loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
@@ -769,7 +769,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
         elif args.model == "CERT":
             predictions = model.forward(batch[0][:, :-n_dummy], batch[0][:, -n_dummy:])
-            mono_flag = certify_neural_network(model, train_shape - 1)
+            #mono_flag = certify_neural_network(model, train_shape - 1)
 
         if args.model == "MINMAX" or args.model == "MONOMINMAX": 
             predictions = model.forward(batch[0][:,:-1])
@@ -1002,8 +1002,8 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
-    #MODEL = "CERT"
+    #MODEL = "MVNN"
+    MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
     #MODEL = "MONOMINMAX"
@@ -1030,11 +1030,11 @@ if __name__ == "__main__":
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            "lin_skip_connection": {"values": ["True", "False"]},
-            "trainable_ts": {"values": ["True", "False"]},
+            #"lin_skip_connection": {"values": ["True", "False"]},
+            #"trainable_ts": {"values": ["True", "False"]},
             #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [32, 64, 128, 256]},
             #"group_size": {"values": [8, 16, 32, 64, 128]},
@@ -1044,7 +1044,8 @@ if __name__ == "__main__":
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models 30 1")
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models  ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models decay full ")
     #wandb.agent(sweep_id, function=main, count=35)
     count = 15
     #wandb.agent(sweep_id, function=main, count=35)
