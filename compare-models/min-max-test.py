@@ -43,6 +43,22 @@ from certify import *
 #from mvnns.mvnn_generic_mixed import MVNN_GENERIC_MIXED
 
 
+## datasetgeneration
+from pysats import PySats
+#from sympy.polys.polyoptions import Gen
+#from pdb import set_trace
+import os
+
+# make sure you set the classpath before loading any other modules
+PySats.getInstance()
+
+import numpy as np
+import pickle
+from pysats_ext import GenericWrapper
+import argparse
+import itertools
+
+
 
 def init_parser():
     parser = argparse.ArgumentParser()
@@ -93,6 +109,15 @@ def init_parser():
     #parser.add_argument("--init_Var", help="init Var", default=0.09)
     #parser.add_argument("--init_b", help="init b", default=0.05)
     #parser.add_argument("--init_bias", help="init bias", default=0.05)
+    
+    # For dataset_generation
+
+    parser.add_argument('-t','--testing',  type= bool , help='Set mode to testing ', default='True')
+    #parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=[100] )
+    parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
+    parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
+    parser.add_argument('-num', '--number_of_instances', type=int, default=1, help='Num. training data  (1)')
+    parser.add_argument('-ud', '--use_dummy', type=bool, default=False, help='Add dummy variable to training dataset')
 
     return parser
 
@@ -165,15 +190,72 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 
 
 
-def load_dataset(args, num_train_data=50, train_percent=0, seed=100):
+
+## testing with new datasets 
+def generate_all_bundle_value_pairs(world, k, mode):
+    print("STARTED SAMPLING")
+    N = world.get_bidder_ids()
+    M = world.get_good_ids()
+    print(" M is: ", M, " N is: ", N, " for world : " )
+
+    #this only samples 0 and 1 for each good
+    if mode == 'srvm' or mode == 'mrvm':
+       capacities = {i: len(world.good_to_licence[i]) for i in range(len(world.good_to_licence))}
+       print("Capacities: ", capacities)
+       bundle_space = []
+       for _ in range(k):
+           bundle = ()
+           for i in range(len(M)):
+               bundle += (np.random.choice(capacities[i]),)
+           bundle_space.append(bundle)
+       print("Bundle Space is: ", bundle_space) 
+       # Only use unique samples.
+       bundle_space = np.unique(np.array(bundle_space), axis=0)
+       print("Num Unique Samples: ", len(bundle_space))
+
+    elif mode == 'gsvm' or mode == 'lsvm':
+       #this creates a list of lists of length len(M) with all possible combinations of 0 and 1
+       #this calculates the cartesian product of the list [0,1] with itself len(M) times
+       bundle_space = list(itertools.product([0, 1], repeat=len(M)))
+    else:   
+        print("MODE NOT FOUND: ", str(mode)) 
+
+    #bundle_value_pairs = np.array(
+    #    [list(x) + [world.calculate_value(bidder_id, x) for bidder_id in N] for x in tqdm(bundle_space)])
+    values = [[world.calculate_value(bidder_id, x) for bidder_id in N] for x in tqdm(bundle_space)]
+    return bundle_space, values
+def sample_dataset(args,seed):
+    
+    #bidder_id = args.bidder_id
+    num_bids = args.nbids
+    # create an instance
+    domain = getattr(PySats.getInstance(), "create_" + str(args.dataset))(seed=seed)
+    
+    # use the GenericWrapper which uses goods with multiple items per good
+    # a bundle is not anymore a binary vector but a vector of integers
+    if args.dataset == "mrvm" or args.dataset == "srvm":
+        final_domain = GenericWrapper(domain)
+        print("Wrapped")
+    else:
+        final_domain = domain
+    bundles, values = generate_all_bundle_value_pairs(final_domain, num_bids, args.dataset)
+
+    return (bundles, values)
+
+
+def load_dataset(args, num_train_data=50, train_percent=0, seed=100, sample=False):
     # load dataset using pickle
     # parse filepath
-    abspath = "~/masterthesis/ML-CCA-MVNN/compare-models/"
-    filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
-    print("filepath: ", filepath) 
-    with open(filepath, "rb") as file:
-        print("loaded dataset") 
-        dataset = pickle.load(file)
+    if not sample:
+        abspath = "~/masterthesis/ML-CCA-MVNN/compare-models/"
+        filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
+        print("filepath: ", filepath)
+        with open(filepath, "rb") as file:
+            print("loaded dataset")
+            dataset = pickle.load(file)
+    else:
+        dataset = sample_dataset(args,seed)
+
     X = dataset[0]
     y = dataset[1]
     if args.use_dummy:
@@ -943,7 +1025,7 @@ def main(args=None):
         wandb.log({"model": args.model, "dataset": args.dataset})
 
         ### load dataset ###
-        train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed)
+        train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed, sample=args.testing)
         train_shape = train[0][0].shape[0]
 
         print(train_shape, " is the train shape and seed is ", seed )

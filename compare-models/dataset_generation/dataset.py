@@ -116,3 +116,18 @@ if __name__ == "__main__":
     print("Flag has_cyplex is set to "+ str(has_cyplex))
     main()
     print("Success!") 
+'''
+domains=("lsvm" "gsvm" "srvm" "mrvm")
+
+#domains=("srvm")
+
+
+for seed in {100..150}
+do 
+   echo "Start Seed " $seed 
+   for dom in "${domains[@]}"
+   do 
+       python dataset.py -s --mode $dom  --seed $seed 
+   done 
+   echo "Seed done"
+done'''
