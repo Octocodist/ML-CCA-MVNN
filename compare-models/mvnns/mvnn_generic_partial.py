@@ -125,9 +125,12 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
         self.mvnn_input.transform_weights()
         self.final.transform_weights()
 
-    def dropout_decay(self, rate):
-        for dropout in self.dropouts:
-            dropout.p *= rate
+    def decay_dropout(self, rate):
+        self.mvnn_input.decay_dropout(rate)
+        self.final.decay_dropout(rate)
+        for i in range(len(self.non_mono_dropouts)):
+            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * decay
+    
         """
         fc_layer = eval(layer_type)
         
