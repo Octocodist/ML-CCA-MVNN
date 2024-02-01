@@ -542,7 +542,8 @@ def get_minmax(args, input_shape):
     model = MinMax(in_features= input_shape - 1,
                            num_groups=args.num_groups,
                            group_size=args.group_size,
-                           final_output_size=args.final_output_size)
+                           )
+                           #final_output_size=args.final_output_size)
     return model
 
 def get_mvnn(args, input_shape,n_dummy=1):

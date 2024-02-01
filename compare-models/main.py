@@ -46,17 +46,18 @@ def init_parser():
     parser = argparse.ArgumentParser()
 
     ### experiment parameters ###
-    parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
+    #parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
     parser.add_argument("--dataset", help="dataset to use", default="compas", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog', 'compas'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN", "MINMAX", "MONOMINMAX"],
                         default='MONOMINMAX' )
+    parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
+    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
+    parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
-    parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
     parser.add_argument("-e","--epochs", help="number of epochs to train", default=1)
@@ -74,7 +75,9 @@ def init_parser():
     parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--dropout_prob", help="dropout probability", default=0)
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
+    parser.add_argument("--trainable_ts", help="trainable ts", default=True)
 
+    # for CERT
     parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
     parser.add_argument("--normalize_regression", help="normalizing regression", type= bool, default=False)
 
@@ -98,7 +101,7 @@ monominmax_parameters = {
     'mono_num_hidden_units': 20,
     'mono_num_groups': 4,
     'mono_group_size': 20,
-    'final_output_size': 10,
+    #'final_output_size': 10,
 }
 mvnn_parameters = {'num_hidden_layers': 1,
                     'num_hidden_units': 20,
@@ -350,11 +353,15 @@ def generate_regularizer(in_list, out_list):
 
 class MLP_relu(nn.Module):
     def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
-                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False):
+                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False, dropout_prob=0.):
         super(MLP_relu, self).__init__()
         self.lam = 10
         self.normalize_regression = normalize_regression
         self.compress_non_mono = compress_non_mono
+
+        self.mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(mono_sub_num)])
+        self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(non_mono_sub_num)])
+
         if compress_non_mono:
             self.non_mono_feature_extractor = nn.Linear(non_mono_feature, 10, bias=True)
             self.mono_fc_in = nn.Linear(mono_feature + 10, mono_hidden_num, bias=True)
@@ -388,9 +395,11 @@ class MLP_relu(nn.Module):
         for i in range(int(len(self.mono_submods_out))):
             x = self.mono_submods_out[i](x)
             x = F.hardtanh(x, min_val=0.0, max_val=1.0)
+            x = self.mono_dropouts[i](x)
 
             y = self.non_mono_submods_out[i](y)
             y = F.hardtanh(y, min_val=0.0, max_val=1.0)
+            y = self.non_mono_dropouts[i](y)
 
             x = self.mono_submods_in[i](torch.cat([x, y], dim=1))
             x = F.relu(x)
@@ -437,6 +446,13 @@ class MLP_relu(nn.Module):
         x = self.mono_fc_last(x)
         out_list.append(x)
         return in_list, out_list
+
+    def decay_dropout(self, rate):
+        # rate the dropout probability
+        for i in range(len(self.mono_dropouts)):
+            self.mono_dropouts[i].p = self.mono_dropouts[i].p * rate
+        for i in range(len(self.non_mono_dropouts)):
+            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * rate
 
 
 def get_mvnn(args, input_shape,n_dummy=1):
@@ -556,12 +572,14 @@ def get_pcert(args, train_shape, cert_parameters):
 
     model = MLP_relu(train_shape[0],
                      train_shape[1],
-                     pcert_parameters["mono_sub_num"],
-                     pcert_parameters["non_mono_sub_num"],
-                     pcert_parameters["mono_hidden_num"],
-                     pcert_parameters["non_mono_hidden_num"],
-                     pcert_parameters["compress_non_mono"],
-                     pcert_parameters["normalize_regression"])
+                     mono_sub_num=args.num_hidden_layers,
+                     non_mono_sub_num=args.num_hidden_layers,
+                     mono_hidden_num=args.num_hidden_units,
+                     non_mono_hidden_num=args.num_hidden_units,
+                     compress_non_mono=args.compress_non_mono,
+                     normalize_regression=args.normalize_regression,
+                     dropout_prob=args.dropout_prob,
+                     )
 
     return model
 
@@ -572,14 +590,16 @@ def get_mono_minmax(args, input_shape):
         mono_in_features= input_shape[0] - 1,
         mono_num_groups=args.num_groups,
         mono_group_size=args.group_size,
-        final_output_size=args.final_output_size)
+        dropout_prob=args.dropout_prob,
+        )
     return model
 def get_minmax(args, input_shape):
     # hard code for test
     model = MinMax(in_features= input_shape - 1,
                    num_groups=args.num_groups,
                    group_size=args.group_size,
-                   final_output_size=args.final_output_size)
+                   )
+        #           final_output_size=args.final_output_size)
     return model
 
 # TODOS:
@@ -620,6 +640,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     # this is only relevant for CERT where we add previous batch iterations
     batch_num = 0 
     epoch_num = 0
+
+    curr_dropout = args.dropout_prob
     if infos[2] == 1:
         batch_num = infos[0] 
         epoch_num = infos[1]
@@ -630,7 +652,6 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
     for e in tqdm(range(args.epochs)):
         epoch_num += 1
         for batch in train_loader:
-            # Todo add to GPU
             #batch = batch.to(device)
             batch_num +=1
             reg_loss = 0
@@ -643,7 +664,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 cert_loss = loss_mse(predictions.squeeze(1),batch[1][:,bidder_id])
                 in_list, out_list = model.reg_forward(train_shape, train_shape - n_dummy)
                 reg_loss = generate_regularizer(in_list, out_list)
-                loss_tot = loss + model.lam * reg_loss
+                loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
 
@@ -655,7 +676,6 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 loss_tot = cert_loss + model.lam * reg_loss
                 loss_tot.backward()
                 optimizer.step()
-                #wandb.log({"cert_loss_train": loss.item(), "reg_loss": reg_loss.item(), "Batch_num":batch_num, "Epoch":epoch_num})
 
 
             elif args.model == 'UMNN':
@@ -694,6 +714,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
                 if args.model == "MONOMINMAX":
                     model.set_weights()
+
+            model.decay_dropout(rate=args.dropout_decay)
+            curr_dropout = curr_dropout*args.dropout_decay
+
             if args.model =="CERT" or args.model == "PCERT":
                 if args.dataset == "blog" or args.dataset == "compas":
                     seed_metrics_train.append([loss_tot.item(),
@@ -723,6 +747,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                                epoch_num,
                                                numpy.array(reg_loss.detach()),
                                                numpy.array(cert_loss.detach()),
+                                               curr_dropout,
                                                ])
                 else:
                     seed_metrics_train.append([loss_tot.item(),
@@ -752,7 +777,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                                epoch_num,
                                                numpy.array(reg_loss.detach()),
                                                numpy.array(cert_loss.detach()),
-
+                                               curr_dropout,
                                                ])
             else:
                 if args.dataset == "blog" or args.dataset =="compas":
@@ -774,6 +799,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                                epoch_num,
                                                reg_loss,
                                                cert_loss,
+                                               curr_dropout,
                                                ])
                 else:
                     seed_metrics_train.append([loss_tot.item(),
@@ -794,6 +820,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                                epoch_num,
                                                reg_loss,
                                                cert_loss,
+                                               curr_dropout,
                                                ])
 
         ### Validation ###
@@ -992,6 +1019,7 @@ def log_metrics(args, metrics):
                    "Epoch_train": mean_train[i,15],
                    "Cert_regularizer": mean_train[i, 16],
                    "Cert_loss": mean_train[i, 17],
+                   "Dropout": mean_train[i, 18],
                    })
     for i in range(dims_val[1]):
         wandb.log({"val_loss_tot": mean_val[i,0],
@@ -1088,7 +1116,7 @@ def main(args=None):
         train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
         train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
 
-        #print(train_shape, " is the train shape and seed is ", seed)
+        print(train_shape, " is the train shape and seed is ", seed)
         #print("--- Loaded dataset successfully ---")
 
         ### define model ###
