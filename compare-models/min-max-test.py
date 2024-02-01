@@ -68,11 +68,12 @@ def init_parser():
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MONOMINMAX')
+    parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
+    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
+    parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
-    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
-    parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     ### training parameters ###
     parser.add_argument("-e","--epochs", help="number of epochs to train", default=100)
@@ -112,12 +113,10 @@ def init_parser():
     
     # For dataset_generation
 
-    parser.add_argument('-t','--testing',  type= bool , help='Set mode to testing ', default='True')
     #parser.add_argument('-sd','--seed',nargs=1 ,type=int, help='Define seed', default=[100] )
     parser.add_argument('-s','--save',action='store_true', help='Save the generated dataset', default=False)
     parser.add_argument('-p','--print', action= 'store_true', help='Print the generated dataset', default=False)
     parser.add_argument('-num', '--number_of_instances', type=int, default=1, help='Num. training data  (1)')
-    parser.add_argument('-ud', '--use_dummy', type=bool, default=False, help='Add dummy variable to training dataset')
 
     return parser
 
@@ -246,6 +245,8 @@ def sample_dataset(args,seed):
 def load_dataset(args, num_train_data=50, train_percent=0, seed=100, sample=False):
     # load dataset using pickle
     # parse filepath
+    print(" Dataset load start")
+    print("sampleis : ", sample)
     if not sample:
         abspath = "~/masterthesis/ML-CCA-MVNN/compare-models/"
         filepath = "./dataset_generation/datasets/"+ str(args.dataset)+"/"+str(args.dataset)+"_"+str(seed)+"_"+str(args.nbids)+".pkl"
@@ -1025,7 +1026,9 @@ def main(args=None):
         wandb.log({"model": args.model, "dataset": args.dataset})
 
         ### load dataset ###
-        train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed, sample=args.testing)
+        print( "args.testing is", args.sample)
+        train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed, sample=False)
+        #train, val, test = load_dataset(args, num_train_data= args.num_train_points, seed=seed, sample=args.testing)
         train_shape = train[0][0].shape[0]
 
         print(train_shape, " is the train shape and seed is ", seed )
@@ -1084,8 +1087,8 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    #MODEL = "MVNN"
-    MODEL = "CERT"
+    MODEL = "MVNN"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
     #MODEL = "MONOMINMAX"
@@ -1112,11 +1115,11 @@ if __name__ == "__main__":
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
+            "lin_skip_connection": {"values": ["True", "False"]},
+            "trainable_ts": {"values": ["True", "False"]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [32, 64, 128, 256]},
             #"group_size": {"values": [8, 16, 32, 64, 128]},
@@ -1126,10 +1129,10 @@ if __name__ == "__main__":
             },
         }
 
-    #sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models  ")
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models decay full ")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models 31 1")
+    #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 15
+    count = 10
     #wandb.agent(sweep_id, function=main, count=35)
     num_threads = 24 
     with mp.Pool(num_threads) as p : 
