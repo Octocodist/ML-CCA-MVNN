@@ -123,7 +123,9 @@ class MVNN_GENERIC(nn.Module):
     def forward(self, x):
         if hasattr(self, 'lin_skip_layer'):
             x_in = x
+
         for layer, dropout in zip(self.layers, self.dropouts):
+            print( "first forward pass attempt!")
             x = layer(x)
             x = dropout(x)
 
@@ -132,6 +134,7 @@ class MVNN_GENERIC(nn.Module):
             x = self.output_activation_function(self.output_layer(x)) + self.lin_skip_layer(x_in)
         else:
             x = self.output_activation_function(self.output_layer(x))
+
         return x
 
     def set_dropout_prob(self, dropout_prob):

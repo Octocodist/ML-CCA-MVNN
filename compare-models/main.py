@@ -51,31 +51,47 @@ def init_parser():
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN", "MINMAX", "MONOMINMAX"],
-                        default='MONOMINMAX' )
+                        default='PUMNN' )
     parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
     parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.2, help="percentage of data to use for training")
     parser.add_argument("-ud","--use_dummy", type=bool, default=True, help="use dummy dataset")
+    parser.add_argument("--dropout_decay", help="dropout decay per epoch ", default=0.97)
 
     ### training parameters ###
-    parser.add_argument("-e","--epochs", help="number of epochs to train", default=1)
+    parser.add_argument("-e","--epochs", help="number of epochs to train", default=3)
     parser.add_argument("--batch_size", help="batch size to use", default=128)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     parser.add_argument("--l2_rate", help="l2 norm", default=0.)
     parser.add_argument("--num_train_points", help="num_training data ", default=50)
+    parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
 
     ### model parameters ###
+    ### for MVNN 
     parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=1)
     parser.add_argument("--num_hidden_units", help="number of hidden units", default=20)
     parser.add_argument("--layer_type", help="layer type", default="MVNNLayerReLUProjected")
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
-    parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
-    parser.add_argument("--dropout_prob", help="dropout probability", default=0)
-    parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
+    parser.add_argument("--dropout_prob", help="dropout probability", default=0.)
     parser.add_argument("--trainable_ts", help="trainable ts", default=True)
+   
+    ### for PMVNN
+    parser.add_argument("--output_inner_mvnn", default=5)
+    parser.add_argument("--non_mono_num_hidden_layers", help="number of non mono hidden layers", default=1)
+    parser.add_argument("--non_mono_num_hidden_units", help="number of non mono hidden units", default=20)
+    parser.add_argument("--non_mono_output_dim", help="number ofnon mono output units", default=10)
+    parser.add_argument("--non_mono_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
+    parser.add_argument("--non_mono_dropout_prob", help="dropout probability", default=0.)
+
+    parser.add_argument("--final_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
+    parser.add_argument("--final_num_hidden_layers", help="number of hidden layers", default=1)
+    parser.add_argument("--final_num_hidden_units", help="number of hidden units", default=20)
+    parser.add_argument("--final_dropout_prob", help="final dropout probability", default=0.)
+    parser.add_argument("--final_trainable_ts", help="final trainable ts", default=True)
+    parser.add_argument("--final_output_inner_mvnn", help="final output inner mvnn", default=10)
 
     # for CERT
     parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
@@ -87,6 +103,9 @@ def init_parser():
     parser.add_argument("--num_groups",  help="num groups for minmax", type= int, default=5)
     parser.add_argument("--group_size",  help="group size for minmax", type= int, default=10)
     parser.add_argument("--final_output_size",  help="final output size before last layer", type= int, default=5)
+    parser.add_argument("--non_mono_num_groups",  help="num non mono groups for minmax", type= int, default=5)
+    parser.add_argument("--non_mono_group_size",  help="non_mono group size for minmax", type= int, default=10)
+
     return parser
 
 #TODO: take this from a file
@@ -271,7 +290,7 @@ pumnn_parameters = {"out_embedding": 18, "num_embedding_layers": 1, "num_embeddi
 #This network needs an embedding Network and a umnn network
 #TODO change this from hardcoded
 class PartialEmbeddingNet(nn.Module):
-    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
+    def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10, dropout_prob=0.):
         super(PartialEmbeddingNet, self).__init__()
         ## Attention this dynamic setting of embedding was modified from the original code
         self.layers = []
@@ -282,6 +301,9 @@ class PartialEmbeddingNet(nn.Module):
         self.layers.append(nn.Linear(num_embedding_hiddens, out_embedding))
         self.layers.append(nn.ReLU())
         self.embedding_net = nn.Sequential(*self.layers).to(device)
+
+        self.dropouts = nn.Dropout(p=dropout_prob)
+
         self.umnn_hidden = []
         for i in range(num_main_hidden_layers):
             self.umnn_hidden.append(num_main_hidden_nodes)
@@ -297,9 +319,14 @@ class PartialEmbeddingNet(nn.Module):
     def forward(self, x_mono, x_non_mono):
 
         h = self.embedding_net(x_non_mono)
-
+        
+        x = torch.nan_to_num(torch.sigmoid(self.umnn(x_mono, h)))
+        x = self.dropouts(x)
         # CARE THIS IS A MESSY QUICK FIX 
-        return torch.nan_to_num(torch.sigmoid(self.umnn(x_mono, h)))
+
+        return x
+    def decay_dropout(self, rate):
+        self.dropouts.p = self.dropouts.p * rate
 
 class EmbeddingNet(nn.Module):
     def __init__(self, in_embedding, in_main, out_embedding, device='cpu',num_embedding_layers=3, num_embedding_hiddens=200, num_main_hidden_layers=3, num_main_hidden_nodes=100, nb_steps=10):
@@ -483,52 +510,53 @@ def get_mvnn_partial(args, input_shape, partial_mvnn_parameters):
     input_shape_mono = input_shape[0]
     input_shape_non_mono = input_shape[1]
     capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
-    capacity_generic_goods_final = np.array([1 for _ in range(partial_mvnn_parameters['output_inner_mvnn']+partial_mvnn_parameters['non_mono_output_dim'])])
+    capacity_generic_goods_final = np.array([1 for _ in range(args.output_inner_mvnn+args.non_mono_output_dim)])
     model = MVNN_GENERIC_PARTIAL(input_dim=input_shape_mono,
-                                 num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
-                                 num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
-                                 dropout_prob=partial_mvnn_parameters['dropout_prob'],
+                                 num_hidden_layers=args.num_hidden_layers,
+                                 num_hidden_units=args.num_hidden_units,
+                                 dropout_prob=args.dropout_prob,
                                  layer_type=partial_mvnn_parameters['layer_type'],
                                  target_max=partial_mvnn_parameters['target_max'],
                                  init_method=partial_mvnn_parameters['init_method'],
                                  random_ts=partial_mvnn_parameters['random_ts'],
-                                 trainable_ts=partial_mvnn_parameters['trainable_ts'],
+                                 trainable_ts=args.trainable_ts,
                                  init_E=partial_mvnn_parameters['init_E'],
                                  init_Var=partial_mvnn_parameters['init_Var'],
                                  init_b=partial_mvnn_parameters['init_b'],
                                  init_bias=partial_mvnn_parameters['init_bias'],
                                  init_little_const=partial_mvnn_parameters['init_little_const'],
                                  lin_skip_connection=args.lin_skip_connection,
-                                 output_inner_mvnn = partial_mvnn_parameters['output_inner_mvnn'],
+                                 output_inner_mvnn = args.output_inner_mvnn,
 
                                  non_mono_input_dim=input_shape_non_mono,
-                                 non_mono_num_hidden_layers=partial_mvnn_parameters['non_mono_num_hidden_layers'],
-                                 non_mono_num_hidden_units=partial_mvnn_parameters['non_mono_num_hidden_units'],
-                                 non_mono_output_dim=partial_mvnn_parameters['non_mono_output_dim'],
-                                 non_mono_lin_skip_connection=partial_mvnn_parameters['non_mono_lin_skip_connection'],
-                                 non_mono_dropout_prob=partial_mvnn_parameters['non_mono_dropout_prob'],
+                                 non_mono_num_hidden_layers=args.non_mono_num_hidden_layers,
+                                 non_mono_num_hidden_units=args.non_mono_num_hidden_units,
+                                 non_mono_output_dim=args.non_mono_output_dim,
+                                 non_mono_lin_skip_connection=args.non_mono_lin_skip_connection,
+                                 non_mono_dropout_prob=args.non_mono_dropout_prob,
 
-                                 final_num_hidden_layers=partial_mvnn_parameters['num_hidden_layers'],
-                                 final_num_hidden_units=partial_mvnn_parameters['num_hidden_units'],
-                                 final_dropout_prob=partial_mvnn_parameters['dropout_prob'],
+                                 final_num_hidden_layers=args.final_num_hidden_layers,
+                                 final_num_hidden_units=args.final_num_hidden_units,
+                                 final_dropout_prob=args.final_dropout_prob,
+                                 final_trainable_ts=args.final_trainable_ts,
+                                 final_lin_skip_connection=args.final_lin_skip_connection,
+                                 final_output_inner_mvnn = args.final_output_inner_mvnn,
+
                                  final_layer_type=partial_mvnn_parameters['layer_type'],
                                  final_target_max=partial_mvnn_parameters['target_max'],
                                  final_init_method=partial_mvnn_parameters['init_method'],
                                  final_random_ts=partial_mvnn_parameters['random_ts'],
-                                 final_trainable_ts=partial_mvnn_parameters['trainable_ts'],
                                  final_init_E=partial_mvnn_parameters['init_E'],
                                  final_init_Var=partial_mvnn_parameters['init_Var'],
                                  final_init_b=partial_mvnn_parameters['init_b'],
                                  final_init_bias=partial_mvnn_parameters['init_bias'],
                                  final_init_little_const=partial_mvnn_parameters['init_little_const'],
-                                 final_lin_skip_connection=args.final_lin_skip_connection,
-                                 final_output_inner_mvnn = partial_mvnn_parameters['final_output_inner_mvnn'],
                                  final_capacity_generic_goods=capacity_generic_goods_final,
                                  capacity_generic_goods=capacity_generic_goods,
                                  )
     return model
 
-def get_pumnn(pumnn_parameters,input_shape , device="cpu"):
+def get_pumnn(args, pumnn_parameters, input_shape , device="cpu"):
     # this allows to set embedding network output size
     if pumnn_parameters['out_embedding_same'] == True :
         out_embedding = input_shape[1]
@@ -543,6 +571,7 @@ def get_pumnn(pumnn_parameters,input_shape , device="cpu"):
                                 num_embedding_hiddens=umnn_parameters['num_embedding_hiddens'],
                                 num_main_hidden_layers=umnn_parameters['num_main_hidden_layers'],
                                 num_main_hidden_nodes=umnn_parameters['num_main_hidden_nodes'],
+                                dropout_prob = args.dropout_prob,
                                 nb_steps=umnn_parameters['nb_steps'])
     return model
 def get_umnn(umnn_parameters, input_shape, device="cpu"):
@@ -587,9 +616,12 @@ def get_mono_minmax(args, input_shape):
     # hard code for test
     model = MonotoneMinMax(
         mono_mode=args.mono_mode,
-        mono_in_features= input_shape[0] - 1,
+        mono_in_features= input_shape[0],
         mono_num_groups=args.num_groups,
         mono_group_size=args.group_size,
+        non_mono_in_features= input_shape[1],
+        non_mono_num_groups=args.non_mono_num_groups,
+        non_mono_group_size=args.non_mono_group_size,
         dropout_prob=args.dropout_prob,
         )
     return model
@@ -599,7 +631,6 @@ def get_minmax(args, input_shape):
                    num_groups=args.num_groups,
                    group_size=args.group_size,
                    )
-        #           final_output_size=args.final_output_size)
     return model
 
 # TODOS:
@@ -701,6 +732,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 model.transform_weights()
 
             elif args.model == "PMVNN":
+                print(len(batch[0]), "  len batch " , len(batch[1]), " train shapes ", train_shape[0])
                 predictions = model.forward(batch[0], batch[1])
                 loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
@@ -825,9 +857,9 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
         ### Validation ###
         print("START validation")
-        val_loader = torch.utils.data.DataLoader(val, batch_size=args.batch_size, shuffle=True)
-        for batch in val_loader:
-            #batch = batch.to(device)
+        val_size = len(val)
+        val_loader = torch.utils.data.DataLoader(val, batch_size=val_size, shuffle=True)
+        for batch in tqdm(val_loader):
             if args.model == "MVNN" or args.model == "UMNN":
                 predictions = model.forward(batch[0])
             elif args.model == "CERT":
@@ -883,7 +915,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
         print("END validation")
     print("Start Testing")
         ### Test ###
-    test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True)
+    test_size = len(test)
+    test_loader = torch.utils.data.DataLoader(test, batch_size=test_size, shuffle=True)
     for batch in test_loader:
         #batch = batch.to(device)
         if args.model == "MVNN" or args.model == "UMNN":
@@ -969,7 +1002,7 @@ def get_model(args, train_shape):
 
     elif args.model== "PUMNN":
         print("LOADING PUMNN")
-        model = get_pumnn( pumnn_parameters,train_shape, device)
+        model = get_pumnn(args, pumnn_parameters,train_shape, device)
 
     elif args.model == 'MINMAX':
         print("LOADING MINMAX")
@@ -1178,63 +1211,64 @@ if __name__ == "__main__":
     #MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
-    sweep_config = {
-        "method": "random",
-        "metric": {"goal": "minimize", "name": "val_loss_tot"},
+    sweep_config = { 
+        "method": "random", 
+        "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
-            "learning_rate": {"values": [0.001, 0.005, 0.01,  0.05, 0.1]},
-            #"num_hidden_layers": { "values" : [1,2,3]},
-            #"num_hidden_units": { "values": [16,32,64,128,256]},
-            "batch_size": { "values": [25,50,100]},
-            "l2_rate": { "values": [0.0, 0.5, 1.0]},
+            "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
+            "num_hidden_layers": { "values" : [1,2,3,4]},
+            "num_hidden_units": { "values": [16,32,64,128,256]},
+            "batch_size": { "values": [10, 50]},
+            "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["mrvm"]},
+            "dataset": {"values":["gsvm"]}, 
             "bidder_id":{ "values": [0]},
-            "epochs":{ "values": [200]},
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]},
+            "epochs":{ "values": [100, 200, 400]},
+            "num_train_points":{ "values": [50]},
+            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
             # MVNN Params
             #"lin_skip_connection": {"values": ["True", "False"]},
             #"trainable_ts": {"values": ["True", "False"]},
-            #"dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            # PMVNN Params
+            "final_num_hidden_layers": { "values" : [1,2,3,4]},
+            "final_num_hidden_units": { "values": [17]},
+            #"final_num_hidden_units": { "values": [16,32,64,128,256]},
+            "final_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            "final_trainable_ts": {"values": ["True", "False"]},
+            "final_lin_skip_connection": {"values": ["True", "False"]},
+
+            "non_mono_num_hidden_layers": { "values" : [1,2,3,4]},
+            "non_mono_num_hidden_units": { "values": [16,32,64,128,256]},
+            "non_mono_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            "non_mono_lin_skip_connection": {"values": ["True", "False"]},
+
+            "output_inner_mvnn": { "values": [8,16,32,64]},
+            "non_mono_output_dim": { "values": [8,16,32,64]},
+            "non_mono_output_dim": { "values": [8,16,32,64]},
+            "final_output_inner_mvnn": { "values": [66]},
+            #"final_output_inner_mvnn": { "values": [8,16,32,64]},
+
             #CERT Params
             #"compress_non_mono": {"values": ["True", "False"]},
             #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            "num_groups": {"values": [4, 8, 16, 32]},
-            "group_size": {"values": [5, 10, 15, 20]},
-            "final_output_size": {"values": [10, 15, 20]},
+            #"num_groups": {"values": [32, 64, 128, 256]},
+            #"group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
-            "mono_mode": { "values": ["exp","x2","weights"]},
-        },
-    }
-    #wandb.agent(sweep_id, function=main, count=35)
-    #count = 15
-    #num_threads = 24
+            #"mono_mode": { "values": ["exp","x2","weights"]},
+            },
+        }
+
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
+    count = 1
+    num_threads = 1
     #with mp.Pool(num_threads) as p :
     #    p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
-    print("Testing classic Main")
+    #print("Testing classic Main")
     parser = init_parser()
     args = parser.parse_args()
     main(args)
-    #exit()
+    exit()
 
-
-    #wandb.init(project="MVNN-Runs")
-    #wandb.init(project="MVNN-Runs", config={"n_runs": 0 }, reinit=True)
-    #wandb.config.update(args, allow_val_change=True)
-    #sweep_config = {
-    #    "method": "random",
-    #    "metric": {"goal": "minimize", "name": "val_loss"},
-    #    "parameters": {
-    #        "learning_rate": {"min": 0.0001, "max": 0.01},
-    #        "num_hidden_layers": { "values" : [1,2,3]},
-    #        "num_hidden_units": { "values": [10,40,160]},
-    #        "lin_skip_connection": {"values": ["True", "False"]},
-    #        "model": {"values":[str(MODEL)]},
-    #        "dataset": {"values":["blog"]},
-    #        #"dataset": {"values":["lsvm"]},
-    #        #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]},
-    #        "bidder_id":{ "values": [0]},
-    #        }
-    #    }

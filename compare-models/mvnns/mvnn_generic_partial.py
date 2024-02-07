@@ -59,7 +59,9 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
         #self.intermediate = nn.Linear(output_inner_mvnn + non_mono_output_dim*2 ,final_input_dim,bias=True)
         # this mvnn must have at least 3 hidden layers
         final_input_dims = output_inner_mvnn + non_mono_output_dim
-        self.final = MVNN_GENERIC(final_input_dims, final_num_hidden_layers,final_num_hidden_units,final_dropout_prob, final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
+
+
+        self.finall = MVNN_GENERIC(final_input_dims,final_num_hidden_layers,final_num_hidden_units,final_dropout_prob, final_layer_type,final_target_max,final_init_method,final_random_ts,final_trainable_ts,final_init_E,final_init_Var,final_init_b,final_init_bias,final_init_little_const,final_lin_skip_connection,final_capacity_generic_goods,final_output_inner_mvnn)
         self.non_mono_layers = []
 
         #initial layer
@@ -97,7 +99,6 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
             self.lin_skip_layer = nn.Linear(non_mono_input_dim,non_mono_output_dim,bias=False)
 
     def forward(self, x_mono, x_non_mono):
-
         x_mono_m = self.mvnn_input(x_mono)
 
         if hasattr(self, 'non_mono_lin_skip_layer'):
@@ -114,10 +115,10 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
             x_non_mono = self.non_mono_output_activation(self.non_mono_output_layer(x_non_mono)) + self.lin_skip_layer(x_in_non_mono)
         else:
             x_non_mono = self.non_mono_output_activation(self.non_mono_output_layer(x_non_mono))
+
         x_middle = torch.cat([x_mono_m,x_non_mono],dim=1)
 
-
-        x_final = self.final(x_middle)
+        x_final = self.finall(x_middle)
 
         return x_final
 
@@ -129,7 +130,7 @@ class MVNN_GENERIC_PARTIAL(nn.Module):
         self.mvnn_input.decay_dropout(rate)
         self.final.decay_dropout(rate)
         for i in range(len(self.non_mono_dropouts)):
-            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * decay
+            self.non_mono_dropouts[i].p = self.non_mono_dropouts[i].p * rate
     
         """
         fc_layer = eval(layer_type)

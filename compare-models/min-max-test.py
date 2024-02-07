@@ -69,7 +69,7 @@ def init_parser():
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "MMVNN","MINMAX","MONOMINMAX"], default='MONOMINMAX')
     parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
-    parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
+    parser.add_argument("-ns","--num_seeds", type=int, default=10, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
 
     parser.add_argument("-tp","--train_percent", type=float, default=0.0, help="percentage of data to use for training")
@@ -1109,8 +1109,8 @@ if __name__ == "__main__":
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["gsvm"]}, 
-            "bidder_id":{ "values": [0]},
+            "dataset": {"values":["mrvm"]}, 
+            "bidder_id":{ "values": [7]},
             "epochs":{ "values": [100, 200, 400]},
             "num_train_points":{ "values": [50]},
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
@@ -1130,12 +1130,12 @@ if __name__ == "__main__":
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models 31 1")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models HPO mrvm")
     #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 10
+    count = 5
     #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 24 
+    num_threads = 48 
     with mp.Pool(num_threads) as p : 
         p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 

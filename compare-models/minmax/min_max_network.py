@@ -125,7 +125,7 @@ class MonotoneMinMax(nn.Module):
         x_mono = torch.cat(mono_group_outputs, dim=1)
         if x_non_mono is not None:
             #x_non_mono = torch.cat([ x_non_mono, self.non_mono_bias], dim=1)
-            non_mono_group_outputs = [group(x_non_mono) for group in self.groups]
+            non_mono_group_outputs = [group(x_non_mono) for group in self.non_mono_groups]
             x_non_mono = torch.cat(non_mono_group_outputs, dim=1)
             x_mono = torch.cat([x_mono, x_non_mono], dim=1)
         #max_val, _ = torch.max(self.final_layer(x_mono), dim=1, keepdim=True)
