@@ -47,11 +47,11 @@ def init_parser():
 
     ### experiment parameters ###
     #parser.add_argument("--experiment", help="experiment to run", default="0", choices=['0','1'])
-    parser.add_argument("--dataset", help="dataset to use", default="compas", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog', 'compas'] )
+    parser.add_argument("--dataset", help="dataset to use", default="blog", choices=['gsvm' , 'lsvm', 'srvm', 'mrvm', 'blog', 'compas'] )
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN", "MINMAX", "MONOMINMAX"],
-                        default='PUMNN' )
+                        default='PMVNN' )
     parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
     parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
@@ -62,7 +62,7 @@ def init_parser():
 
     ### training parameters ###
     parser.add_argument("-e","--epochs", help="number of epochs to train", default=3)
-    parser.add_argument("--batch_size", help="batch size to use", default=128)
+    parser.add_argument("--batch_size", help="batch size to use", default=18)
     parser.add_argument("--learning_rate", help="learning rate", default=0.001)
     parser.add_argument("--l2_rate", help="l2 norm", default=0.)
     parser.add_argument("--num_train_points", help="num_training data ", default=50)
@@ -80,9 +80,9 @@ def init_parser():
    
     ### for PMVNN
     parser.add_argument("--output_inner_mvnn", default=5)
-    parser.add_argument("--non_mono_num_hidden_layers", help="number of non mono hidden layers", default=1)
-    parser.add_argument("--non_mono_num_hidden_units", help="number of non mono hidden units", default=20)
-    parser.add_argument("--non_mono_output_dim", help="number ofnon mono output units", default=10)
+    parser.add_argument("--non_mono_num_hidden_layers", help="number of non mono hidden layers", default=2)
+    parser.add_argument("--non_mono_num_hidden_units", help="number of non mono hidden units", default=23)
+    parser.add_argument("--non_mono_output_dim", help="number ofnon mono output units", default=12)
     parser.add_argument("--non_mono_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--non_mono_dropout_prob", help="dropout probability", default=0.)
 
@@ -509,6 +509,7 @@ def get_mvnn(args, input_shape,n_dummy=1):
 def get_mvnn_partial(args, input_shape, partial_mvnn_parameters):
     input_shape_mono = input_shape[0]
     input_shape_non_mono = input_shape[1]
+    output_shape = input_shape[2]
     capacity_generic_goods = np.array([1 for _ in range(input_shape_mono)])
     capacity_generic_goods_final = np.array([1 for _ in range(args.output_inner_mvnn+args.non_mono_output_dim)])
     model = MVNN_GENERIC_PARTIAL(input_dim=input_shape_mono,
@@ -540,7 +541,8 @@ def get_mvnn_partial(args, input_shape, partial_mvnn_parameters):
                                  final_dropout_prob=args.final_dropout_prob,
                                  final_trainable_ts=args.final_trainable_ts,
                                  final_lin_skip_connection=args.final_lin_skip_connection,
-                                 final_output_inner_mvnn = args.final_output_inner_mvnn,
+                                 final_output_inner_mvnn = output_shape,
+                                 #final_output_inner_mvnn = args.final_output_inner_mvnn,
 
                                  final_layer_type=partial_mvnn_parameters['layer_type'],
                                  final_target_max=partial_mvnn_parameters['target_max'],
@@ -734,6 +736,8 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             elif args.model == "PMVNN":
                 print(len(batch[0]), "  len batch " , len(batch[1]), " train shapes ", train_shape[0])
                 predictions = model.forward(batch[0], batch[1])
+                print(len(predictions), "  len predictions / shape  " , predictions.shape)
+                print(predictions.squeeze(1).shape, "  squeeze len predictions / shape  " , batch[2].shape)
                 loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
                 optimizer.step()
@@ -1100,7 +1104,9 @@ def main(args=None):
     #wandb.log({"Started": True})
 
     args.__dict__.update(wandb.config)
+
     wandb.config.update(args, allow_val_change=True)
+    print(wandb.config ) 
 
     # log  parameters
     group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
@@ -1147,7 +1153,7 @@ def main(args=None):
 
         ### load dataset ###
         train, val, test = load_dataset(args, train_percent=args.train_percent,seed=seed)
-        train_shape = [train[0][0].shape[0], train[0][1].shape[0]]
+        train_shape = [train[0][0].shape[0], train[0][1].shape[0], train[0][2].shape[0]]
 
         print(train_shape, " is the train shape and seed is ", seed)
         #print("--- Loaded dataset successfully ---")
@@ -1204,11 +1210,11 @@ if __name__ == "__main__":
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
     #MODEL = "CERT"
-    MODEL = "PMVNN"
+    #MODEL = "PMVNN"
     #MODEL = "PCERT"
     #MODEL = "PUMNN"
     #MODEL = "MINMAX"
-    #MODEL = "MONOMINMAX"
+    MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     sweep_config = { 
@@ -1221,9 +1227,11 @@ if __name__ == "__main__":
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["gsvm"]}, 
+            #"dataset": {"values":["blog"]}, 
+            "dataset": {"values":["compas"]}, 
             "bidder_id":{ "values": [0]},
-            "epochs":{ "values": [100, 200, 400]},
+            #"epochs":{ "values": [100, 200, 400]},
+            "epochs":{ "values": [1]},
             "num_train_points":{ "values": [50]},
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
@@ -1247,7 +1255,7 @@ if __name__ == "__main__":
             "non_mono_output_dim": { "values": [8,16,32,64]},
             "non_mono_output_dim": { "values": [8,16,32,64]},
             "final_output_inner_mvnn": { "values": [66]},
-            #"final_output_inner_mvnn": { "values": [8,16,32,64]},
+            "final_output_inner_mvnn": { "values": [8,16,32,64]},
 
             #CERT Params
             #"compress_non_mono": {"values": ["True", "False"]},
@@ -1263,12 +1271,11 @@ if __name__ == "__main__":
     sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
     count = 1
     num_threads = 1
-    #with mp.Pool(num_threads) as p :
-    #    p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
-
+    with mp.Pool(num_threads) as p :
+       p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
     #print("Testing classic Main")
-    parser = init_parser()
-    args = parser.parse_args()
-    main(args)
-    exit()
+    #parser = init_parser()
+    #args = parser.parse_args()
+    #main(args)
+    #exit()
 

@@ -1109,8 +1109,8 @@ if __name__ == "__main__":
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["mrvm"]}, 
-            "bidder_id":{ "values": [7]},
+            "dataset": {"values":["lsvm"]}, 
+            "bidder_id":{ "values": [5]},
             "epochs":{ "values": [100, 200, 400]},
             "num_train_points":{ "values": [50]},
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
@@ -1126,11 +1126,11 @@ if __name__ == "__main__":
             #"group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
             #"mono_mode": { "values": ["exp"]},
-            #"mono_mode": { "values": ["exp","x2","weights"]},
+            #"mono_mode": { "values": ["x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models HPO mrvm")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models HPO lsvm")
     #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
     count = 5
