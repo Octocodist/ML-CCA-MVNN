@@ -51,7 +51,7 @@ def init_parser():
     parser.add_argument("--nbids", help="number of bids to use", default=25000)
     parser.add_argument("--bidder_id", help="bidder id to use", default=0)
     parser.add_argument('-m','--model',  type=str, help='Choose model to train: UMNN, MVNN', choices=['UMNN','MVNN','CERT', "PMVNN", "PCERT", "PUMNN", "MINMAX", "MONOMINMAX"],
-                        default='PMVNN' )
+                        default='PCERT' )
     parser.add_argument('--sample',  type= bool , help='Set mode to testing ', default="False")
     parser.add_argument("-ns","--num_seeds", type=int, default=1, help="number of seeds to use for hpo")
     parser.add_argument("-is","--initial_seed", type=int, default=100, help="initial seed to use for hpo")
@@ -69,9 +69,13 @@ def init_parser():
     parser.add_argument("--scale", help="scale to 0-1", type= bool, default=True)
 
     ### model parameters ###
+    ### PMVNN and CERT
+    parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=3)
+    parser.add_argument("--num_hidden_units", help="number of hidden units", default=30)
+    parser.add_argument("--non_mono_num_hidden_layers", help="number of non mono hidden layers", default=5)
+    parser.add_argument("--non_mono_num_hidden_units", help="number of non mono hidden units", default=28)
+
     ### for MVNN 
-    parser.add_argument("--num_hidden_layers", help="number of hidden layers", default=1)
-    parser.add_argument("--num_hidden_units", help="number of hidden units", default=20)
     parser.add_argument("--layer_type", help="layer type", default="MVNNLayerReLUProjected")
     parser.add_argument("--target_max", help="target max", default=1)
     parser.add_argument("--lin_skip_connection", type=bool,  help="linear skip connection", default=False)
@@ -80,8 +84,6 @@ def init_parser():
    
     ### for PMVNN
     parser.add_argument("--output_inner_mvnn", default=5)
-    parser.add_argument("--non_mono_num_hidden_layers", help="number of non mono hidden layers", default=2)
-    parser.add_argument("--non_mono_num_hidden_units", help="number of non mono hidden units", default=23)
     parser.add_argument("--non_mono_output_dim", help="number ofnon mono output units", default=12)
     parser.add_argument("--non_mono_lin_skip_connection", type=bool,  help="linear skip connection", default=False)
     parser.add_argument("--non_mono_dropout_prob", help="dropout probability", default=0.)
@@ -94,8 +96,10 @@ def init_parser():
     parser.add_argument("--final_output_inner_mvnn", help="final output inner mvnn", default=10)
 
     # for CERT
-    parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=False)
-    parser.add_argument("--normalize_regression", help="normalizing regression", type= bool, default=False)
+    parser.add_argument("--compress_non_mono", help="compressing mono inputs", type= bool, default=True)
+    parser.add_argument("--normalize_regression", help="normalizing regression", type= bool, default=True)
+    parser.add_argument("--bottleneck", help="number of bottleneck  units", default=10)
+
 
 
     # for MINMAX
@@ -182,7 +186,7 @@ cert_parameters = {"output_parameters": 1, "num_hidden_layers": 4, "hidden_nodes
 
 
 
-def load_dataset(args, num_train_data=50, train_percent=0., seed=100):
+def load_dataset(args, num_train_data=50, train_percent=0.2, seed=100):
     # load dataset using pickle
     # parse filepath
 
@@ -380,7 +384,7 @@ def generate_regularizer(in_list, out_list):
 
 class MLP_relu(nn.Module):
     def __init__(self, mono_feature, non_mono_feature, mono_sub_num=1, non_mono_sub_num=1, mono_hidden_num=5,
-                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False, dropout_prob=0.):
+                 non_mono_hidden_num=5, compress_non_mono=False, normalize_regression=False, dropout_prob=0., bottleneck=10.):
         super(MLP_relu, self).__init__()
         self.lam = 10
         self.normalize_regression = normalize_regression
@@ -389,13 +393,12 @@ class MLP_relu(nn.Module):
         self.mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(mono_sub_num)])
         self.non_mono_dropouts = torch.nn.ModuleList([nn.Dropout(p=dropout_prob) for _ in range(non_mono_sub_num)])
 
-        if compress_non_mono:
-            self.non_mono_feature_extractor = nn.Linear(non_mono_feature, 10, bias=True)
-            self.mono_fc_in = nn.Linear(mono_feature + 10, mono_hidden_num, bias=True)
+        if compress_non_mono  :
+            self.non_mono_feature_extractor = nn.Linear(non_mono_feature, bottleneck, bias=True)
+            self.mono_fc_in = nn.Linear(mono_feature + bottleneck, mono_hidden_num, bias=True)
         else:
             self.mono_fc_in = nn.Linear(mono_feature + non_mono_feature, mono_hidden_num, bias=True)
 
-        bottleneck = 10
         self.non_mono_fc_in = nn.Linear(non_mono_feature, non_mono_hidden_num, bias=True)
         self.mono_submods_out = nn.ModuleList(
             [nn.Linear(mono_hidden_num, bottleneck, bias=True) for i in range(mono_sub_num)])
@@ -600,16 +603,20 @@ def get_cert(args, train_shape, cert_parameters):
     return model
 
 def get_pcert(args, train_shape, cert_parameters):
-
-    model = MLP_relu(train_shape[0],
-                     train_shape[1],
+    print("Train shapes while loading", train_shape)
+    print(" args while loading" , args) 
+    model = MLP_relu(mono_feature= train_shape[0],
+                     non_mono_feature= train_shape[1],
                      mono_sub_num=args.num_hidden_layers,
                      non_mono_sub_num=args.num_hidden_layers,
+
                      mono_hidden_num=args.num_hidden_units,
                      non_mono_hidden_num=args.num_hidden_units,
+
                      compress_non_mono=args.compress_non_mono,
                      normalize_regression=args.normalize_regression,
                      dropout_prob=args.dropout_prob,
+                     bottleneck=args.bottleneck
                      )
 
     return model
@@ -617,14 +624,14 @@ def get_pcert(args, train_shape, cert_parameters):
 def get_mono_minmax(args, input_shape):
     # hard code for test
     model = MonotoneMinMax(
-        mono_mode=args.mono_mode,
-        mono_in_features= input_shape[0],
-        mono_num_groups=args.num_groups,
-        mono_group_size=args.group_size,
-        non_mono_in_features= input_shape[1],
-        non_mono_num_groups=args.non_mono_num_groups,
-        non_mono_group_size=args.non_mono_group_size,
-        dropout_prob=args.dropout_prob,
+        mono_mode=              args.mono_mode,
+        mono_in_features=       input_shape[0],
+        mono_num_groups=        args.num_groups,
+        mono_group_size=        args.group_size,
+        non_mono_in_features=   input_shape[1],
+        non_mono_num_groups=    args.non_mono_num_groups,
+        non_mono_group_size=    args.non_mono_group_size,
+        dropout_prob=           args.dropout_prob,
         )
     return model
 def get_minmax(args, input_shape):
@@ -689,6 +696,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             batch_num +=1
             reg_loss = 0
             cert_loss = 0
+            print(batch[0].shape,  "/ is batch shape : ", batch[1].shape, batch[2].shape) 
 
             optimizer.zero_grad()
             if args.model == 'CERT':
@@ -702,6 +710,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 optimizer.step()
 
             if args.model == 'PCERT':
+                print(" batches are: " , batch[0], " and " , batch[1])
                 predictions = model.forward(batch[0],batch[1])
                 cert_loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
                 in_list, out_list = model.reg_forward(train_shape[1] + train_shape[0], train_shape[0])
@@ -734,10 +743,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 model.transform_weights()
 
             elif args.model == "PMVNN":
-                print(len(batch[0]), "  len batch " , len(batch[1]), " train shapes ", train_shape[0])
                 predictions = model.forward(batch[0], batch[1])
-                print(len(predictions), "  len predictions / shape  " , predictions.shape)
-                print(predictions.squeeze(1).shape, "  squeeze len predictions / shape  " , batch[2].shape)
                 loss_tot = loss_mse(predictions.squeeze(1),batch[2].squeeze(1))
                 loss_tot.backward()
                 optimizer.step()
@@ -756,6 +762,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
 
             if args.model =="CERT" or args.model == "PCERT":
                 if args.dataset == "blog" or args.dataset == "compas":
+                    print("logging data for pcert and new data cert is ", cert_loss)
                     seed_metrics_train.append([loss_tot.item(),
                                                loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
                                                loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -781,8 +788,10 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                                                kendalltau(batch[2].squeeze(1), predictions.squeeze(1).detach())[1],
                                                batch_num,
                                                epoch_num,
-                                               numpy.array(reg_loss.detach()),
-                                               numpy.array(cert_loss.detach()),
+                                               #numpy.array(reg_loss.item()),
+                                               #reg_loss.item(),
+                                               reg_loss.detach().item(),
+                                               cert_loss.detach().item(),
                                                curr_dropout,
                                                ])
                 else:
@@ -879,6 +888,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
                 predictions = model.forward(batch[0], batch[1])
 
             if args.dataset == "blog" or args.dataset == "compas":
+                print("validating blog ")
                 val_loss = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
                 seed_metrics_val.append([val_loss.item(),
                                          loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -937,6 +947,7 @@ def train_model(args, model, train, val, test,  metrics,  bidder_id=1, cumm_batc
             predictions = model.forward(batch[0], batch[1])
         if args.dataset == "blog" or args.dataset =="compas":
             test_loss_tot = loss_mse(predictions.squeeze(1), batch[2].squeeze(1))
+            print("testing blog ")
             seed_metrics_test.append([test_loss_tot.item(),
                                       loss_mae(predictions.squeeze(1), batch[2].squeeze(1)).item(),
                                       loss_mse(predictions.squeeze(1), batch[2].squeeze(1)).item(),
@@ -1023,7 +1034,7 @@ def get_model(args, train_shape):
     return model
 
 def log_metrics(args, metrics):
-
+    print("Logging metrics") 
     mets_train = numpy.array([numpy.array(xi) for xi in metrics[0]])
     mets_val = numpy.array([numpy.array(xi) for xi in metrics[1]])
     mets_test = numpy.array([numpy.array(xi) for xi in metrics[2]])
@@ -1156,11 +1167,12 @@ def main(args=None):
         train_shape = [train[0][0].shape[0], train[0][1].shape[0], train[0][2].shape[0]]
 
         print(train_shape, " is the train shape and seed is ", seed)
-        #print("--- Loaded dataset successfully ---")
+        print(train[0], " is the full train shape and seed is ", seed)
+        print("--- Loaded dataset successfully ---")
 
         ### define model ###
         model = get_model(args, train_shape)
-        #print("--- Loaded model successfully ---")
+        print("--- Loaded model successfully ---")
 
 
         ### train model ###
@@ -1208,74 +1220,80 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    #MODEL = "MVNN"
     #MODEL = "CERT"
     #MODEL = "PMVNN"
-    #MODEL = "PCERT"
+    MODEL = "PCERT"
     #MODEL = "PUMNN"
     #MODEL = "MINMAX"
-    MODEL = "MONOMINMAX"
+    #MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     sweep_config = { 
         "method": "random", 
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
+            # general Params 
+            "model": {"values":[str(MODEL)]},
+            #"dataset": {"values":["compas"]}, 
+            "dataset": {"values":["blog"]}, 
+            "bidder_id":{ "values": [0]},
+            "num_train_points":{ "values": [100]},
+
+
+            #"epochs":{ "values": [10]},
+            "epochs":{ "values": [100, 200, 400]},
             "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
-            "num_hidden_layers": { "values" : [1,2,3,4]},
-            "num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
-            "model": {"values":[str(MODEL)]},
-            #"dataset": {"values":["blog"]}, 
-            "dataset": {"values":["compas"]}, 
-            "bidder_id":{ "values": [0]},
-            #"epochs":{ "values": [100, 200, 400]},
-            "epochs":{ "values": [1]},
-            "num_train_points":{ "values": [50]},
             "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
-            # MVNN Params
-            #"lin_skip_connection": {"values": ["True", "False"]},
-            #"trainable_ts": {"values": ["True", "False"]},
+            #"dropout_prob": {"values": [0.]},
+            
             # PMVNN Params
-            "final_num_hidden_layers": { "values" : [1,2,3,4]},
-            "final_num_hidden_units": { "values": [17]},
+            #"final_num_hidden_layers": { "values" : [1,2,3,4]},
             #"final_num_hidden_units": { "values": [16,32,64,128,256]},
-            "final_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
-            "final_trainable_ts": {"values": ["True", "False"]},
-            "final_lin_skip_connection": {"values": ["True", "False"]},
+            #"final_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"final_trainable_ts": {"values": ["True", "False"]},
+            #"final_lin_skip_connection": {"values": ["True", "False"]},
 
-            "non_mono_num_hidden_layers": { "values" : [1,2,3,4]},
+            #"non_mono_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
+            #"non_mono_lin_skip_connection": {"values": ["True", "False"]},
+
+            #"output_inner_mvnn": { "values": [8,16,32,64]},
+            #"non_mono_output_dim": { "values": [8,16,32,64]},
+            #"non_mono_output_dim": { "values": [8,16,32,64]},
+            #"final_output_inner_mvnn": { "values": [8,16,32,64]},
+
+            ###CERT Params
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
+            "bottleneck":{"values": [10]},
+
+
+            ### PMVNN and PCERT Params
+            "num_hidden_layers": { "values" : [1,2,3,4]},
+            "num_hidden_units": { "values": [16,32,64,128,256]},
             "non_mono_num_hidden_units": { "values": [16,32,64,128,256]},
-            "non_mono_dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
-            "non_mono_lin_skip_connection": {"values": ["True", "False"]},
+            #"non_mono_num_hidden_layers": { "values" : [1,2,3,4]},
 
-            "output_inner_mvnn": { "values": [8,16,32,64]},
-            "non_mono_output_dim": { "values": [8,16,32,64]},
-            "non_mono_output_dim": { "values": [8,16,32,64]},
-            "final_output_inner_mvnn": { "values": [66]},
-            "final_output_inner_mvnn": { "values": [8,16,32,64]},
 
-            #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [32, 64, 128, 256]},
             #"group_size": {"values": [8, 16, 32, 64, 128]},
+            #"non_mono_num_groups": {"values": [32, 64, 128, 256]},
+            #"non_mono_group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
-            #"mono_mode": { "values": ["exp","x2","weights"]},
+            #"mono_mode": { "values": ["x2","weights"]},
+        
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2")
-    count = 1
-    num_threads = 1
+    sweep_id = wandb.sweep(sweep=sweep_config, project="Experiment 2 HPO blog 26 02   ")
+    count = 10
+    num_threads = 12
     with mp.Pool(num_threads) as p :
        p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
-    #print("Testing classic Main")
+
     #parser = init_parser()
     #args = parser.parse_args()
     #main(args)
-    #exit()
 

@@ -1088,7 +1088,7 @@ if __name__ == "__main__":
     #args = parser.parse_args()
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
-    MODEL = "MVNN"
+    #MODEL = "MVNN"
     #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
@@ -1133,9 +1133,9 @@ if __name__ == "__main__":
     sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models HPO lsvm")
     #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 5
+    count = 10
     #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 48 
+    num_threads = 10 
     with mp.Pool(num_threads) as p : 
         p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
 
