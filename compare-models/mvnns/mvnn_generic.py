@@ -125,7 +125,6 @@ class MVNN_GENERIC(nn.Module):
             x_in = x
 
         for layer, dropout in zip(self.layers, self.dropouts):
-            print( "first forward pass attempt!")
             x = layer(x)
             x = dropout(x)
 

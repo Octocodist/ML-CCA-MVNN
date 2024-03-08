@@ -1089,7 +1089,7 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    #MODEL = "CERT"
+    MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
     #MODEL = "MONOMINMAX"
@@ -1108,37 +1108,35 @@ if __name__ == "__main__":
             "num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
-            "model": {"values":[str(MODEL)]},
-            "dataset": {"values":["lsvm"]}, 
-            "bidder_id":{ "values": [5]},
-            "epochs":{ "values": [100, 200, 400]},
-            "num_train_points":{ "values": [50]},
-            "dropout_prob": {"values": [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "model": { "values" :[str(MODEL)]},
+            "dataset": { "values" :["mrvm"]}, 
+            "bidder_id":{ "values" : [5]},
+            "epochs":{ "values" : [100, 200, 400]},
+            "num_train_points" :{ "values" : [100]},
+            "dropout_prob": {"values" : [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
             # MVNN Params
-            "lin_skip_connection": {"values": ["True", "False"]},
-            "trainable_ts": {"values": ["True", "False"]},
+            #"lin_skip_connection": {"values": ["True", "False"]},
+            #"trainable_ts": {"values": ["True", "False"]},
             #CERT Params
-            #"compress_non_mono": {"values": ["True", "False"]},
-            #"normalize_regression": {"values": ["True", "False"]},
+            "compress_non_mono": {"values": ["True", "False"]},
+            "normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
             #"num_groups": {"values": [32, 64, 128, 256]},
             #"group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
-            #"mono_mode": { "values": ["exp"]},
             #"mono_mode": { "values": ["x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="3 Models HPO lsvm")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="HPO mrvm test bigger")
     #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
-    count = 10
+    count = 8
     #wandb.agent(sweep_id, function=main, count=35)
-    num_threads = 10 
+    num_threads = 24 
     with mp.Pool(num_threads) as p : 
         p.map(start_agent,[[sweep_id,count] for _ in range(num_threads)])
-
+        
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #print("Device is : " , device)
 
