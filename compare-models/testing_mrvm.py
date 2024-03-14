@@ -1105,8 +1105,8 @@ if __name__ == "__main__":
     #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
-    MODEL = "MONOMINMAXWEIGHTS"
-    #MODEL = "MONOMINMAXSQUARE"
+    #MODEL = "MONOMINMAXWEIGHTS"
+    MODEL = "MONOMINMAXSQUARE"
     #MODEL = "MONOMINMAX"
     print("Running model: ", MODEL, "in testing")
 
@@ -1167,18 +1167,17 @@ if __name__ == "__main__":
         "method": "random", 
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
-            "learning_rate": {"values": [0.01 ]},
+            "learning_rate": {"values": [0.005]},
             "batch_size": { "values": [50]},
-            "l2_rate": { "values": [1e-4]},
+            "l2_rate": { "values": [1e-5]},
             "model": {"values":["MONOMINMAX"]},
-            "dataset": {"values":["gsvm"]}, 
-            "bidder_id":{ "values": [0]},
+            "dataset": {"values":["mrvm"]}, 
+            "bidder_id":{ "values": [5]},
             "epochs":{ "values": [400]},
-            "num_train_points":{ "values": [50]},
-            "dropout_prob": {"values": [0.3]},
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
+            "num_train_points":{ "values": [100]},
+            "dropout_prob": {"values": [0]},
             "num_groups": {"values": [256]},
-            "group_size": {"values": [32]},
+            "group_size": {"values": [16]},
             "mono_mode": { "values": ["weights"]},
             #"mono_mode": { "values": ["exp","x2","weights"]},
             },
@@ -1188,18 +1187,17 @@ if __name__ == "__main__":
         "method": "random", 
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
-            "learning_rate": {"values": [0.05 ]},
-            "batch_size": { "values": [50]},
-            "l2_rate": { "values": [1e-5]},
+            "learning_rate": {"values": [0.005]},
+            "batch_size": { "values": [10]},
+            "l2_rate": { "values": [1e-6]},
             "model": {"values":["MONOMINMAX"]},
-            "dataset": {"values":["gsvm"]}, 
-            "bidder_id":{ "values": [0]},
+            "dataset": {"values":["mrvm"]}, 
+            "bidder_id":{ "values": [5]},
             "epochs":{ "values": [400]},
-            "num_train_points":{ "values": [50]},
-            "dropout_prob": {"values": [0.4]},
-            #"dataset": {"values":["gsvm", "lsvm","srvm","mrvm"]}, 
-            "num_groups": {"values": [32]},
-            "group_size": {"values": [16]},
+            "num_train_points":{ "values": [100]},
+            "dropout_prob": {"values": [0.2]},
+            "num_groups": {"values": [64]},
+            "group_size": {"values": [8]},
             "mono_mode": { "values": ["x2"]},
             #"mono_mode": { "values": ["exp","x2","weights"]},
             },

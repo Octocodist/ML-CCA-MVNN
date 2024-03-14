@@ -1089,10 +1089,10 @@ if __name__ == "__main__":
     #group_id = str(args.model) + str(args.dataset) + str(args.bidder_id)
     #os.environ["WANDB_RUN_GROUP"] = "experiment-" + group_id 
     #MODEL = "MVNN"
-    MODEL = "CERT"
+    #MODEL = "CERT"
     #MODEL = "UMNN"
     #MODEL = "MINMAX"
-    #MODEL = "MONOMINMAX"
+    MODEL = "MONOMINMAX"
     print("Running model: ", MODEL)
 
     #wandb.init(project="MVNN-Runs")
@@ -1104,13 +1104,13 @@ if __name__ == "__main__":
         "metric": {"goal": "minimize", "name": "val_loss_tot"}, 
         "parameters": {
             "learning_rate": {"values": [ 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05 ]},
-            "num_hidden_layers": { "values" : [1,2,3,4]},
-            "num_hidden_units": { "values": [16,32,64,128,256]},
+            #"num_hidden_layers": { "values" : [1,2,3,4]},
+            #"num_hidden_units": { "values": [16,32,64,128,256]},
             "batch_size": { "values": [10, 50]},
             "l2_rate": { "values": [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0]},
             "model": { "values" :[str(MODEL)]},
-            "dataset": { "values" :["mrvm"]}, 
-            "bidder_id":{ "values" : [5]},
+            "dataset": { "values" :["srvm"]}, 
+            "bidder_id":{ "values" : [6]},
             "epochs":{ "values" : [100, 200, 400]},
             "num_train_points" :{ "values" : [100]},
             "dropout_prob": {"values" : [0., 0.1, 0.2, 0.3, 0.4 ,0.5]},
@@ -1118,17 +1118,17 @@ if __name__ == "__main__":
             #"lin_skip_connection": {"values": ["True", "False"]},
             #"trainable_ts": {"values": ["True", "False"]},
             #CERT Params
-            "compress_non_mono": {"values": ["True", "False"]},
-            "normalize_regression": {"values": ["True", "False"]},
+            #"compress_non_mono": {"values": ["True", "False"]},
+            #"normalize_regression": {"values": ["True", "False"]},
             #MINMAX Params
-            #"num_groups": {"values": [32, 64, 128, 256]},
-            #"group_size": {"values": [8, 16, 32, 64, 128]},
+            "num_groups": {"values": [32, 64, 128, 256]},
+            "group_size": {"values": [8, 16, 32, 64, 128]},
             #MONOMINMAX Params
-            #"mono_mode": { "values": ["x2","weights"]},
+            "mono_mode": { "values": ["x2","weights"]},
             },
         }
 
-    sweep_id = wandb.sweep(sweep=sweep_config, project="HPO mrvm test bigger")
+    sweep_id = wandb.sweep(sweep=sweep_config, project="HPO srvm")
     #sweep_id = wandb.sweep(sweep=sweep_config, project="Testing Test")
     #wandb.agent(sweep_id, function=main, count=35)
     count = 8

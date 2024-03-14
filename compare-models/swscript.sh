@@ -8,7 +8,7 @@
 
 for i in {200..300}
 do 
-sbatch -t 00:10:00 -n 4  --wrap "python testing_mrvm.py -is $i"
+sbatch -t 00:30:00 -n 4  --wrap "python testing_srvm.py -is $i"
 done    
 
 #export SWEEP_ID=$(awk '/ID:/ {print $6}' tmp )
